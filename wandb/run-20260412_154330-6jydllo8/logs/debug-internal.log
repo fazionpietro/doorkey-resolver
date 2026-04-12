@@ -1,0 +1,19 @@
+{"time":"2026-04-12T15:43:30.334974738+02:00","level":"INFO","msg":"wandb-core"}
+{"time":"2026-04-12T15:43:30.335848281+02:00","level":"INFO","msg":"stream: starting","core version":"0.25.1"}
+{"time":"2026-04-12T15:43:30.633126981+02:00","level":"INFO","msg":"stream: created new stream","id":"6jydllo8"}
+{"time":"2026-04-12T15:43:30.633173725+02:00","level":"INFO","msg":"handler: started"}
+{"time":"2026-04-12T15:43:30.633192458+02:00","level":"INFO","msg":"stream: started"}
+{"time":"2026-04-12T15:43:30.63321491+02:00","level":"INFO","msg":"sender: started"}
+{"time":"2026-04-12T15:43:30.633217904+02:00","level":"INFO","msg":"writer: started","stream_id":"6jydllo8"}
+{"time":"2026-04-12T15:43:31.283495184+02:00","level":"INFO","msg":"filestream: sending request","total_files":1,"console_offset":0,"console_lines":1}
+{"time":"2026-04-12T15:43:31.6521279+02:00","level":"INFO","msg":"filestream: request sent","status":"200 OK"}
+{"time":"2026-04-12T15:43:46.284353291+02:00","level":"INFO","msg":"filestream: sending request","total_files":3,"history_offset":0,"history_lines":91,"events_offset":0,"events_lines":2,"uploaded_len":2}
+{"time":"2026-04-12T15:43:46.500240261+02:00","level":"ERROR","msg":"api: HTTP error","status":404,"method":"POST","url":"https://api.wandb.ai/files/pietrofazion04-univr/minigrid-qlearning/6jydllo8/file_stream"}
+{"time":"2026-04-12T15:43:46.500267872+02:00","level":"ERROR+4","msg":"filestream: fatal error: filestream: failed to upload: 404 Not Found url=https://api.wandb.ai/files/pietrofazion04-univr/minigrid-qlearning/6jydllo8/file_stream: {\"error\":\"run minigrid-qlearning/6jydllo8 not found while streaming file\"}"}
+{"time":"2026-04-12T15:44:43.601616147+02:00","level":"INFO","msg":"stream: closing"}
+{"time":"2026-04-12T15:44:43.846230436+02:00","level":"ERROR","msg":"api: HTTP error","status":404,"method":"POST","url":"https://api.wandb.ai/graphql"}
+{"time":"2026-04-12T15:44:43.846280798+02:00","level":"ERROR","msg":"runfiles: CreateRunFiles returned error: returned error 404: {\"data\":{\"createRunFiles\":null},\"errors\":[{\"message\":\"run minigrid-qlearning/6jydllo8 not found during createRunFiles\",\"path\":[\"createRunFiles\"]}]}"}
+{"time":"2026-04-12T15:44:43.846515369+02:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2026-04-12T15:44:43.846527027+02:00","level":"INFO","msg":"handler: closed"}
+{"time":"2026-04-12T15:44:43.846550297+02:00","level":"INFO","msg":"sender: closed"}
+{"time":"2026-04-12T15:44:43.846556246+02:00","level":"INFO","msg":"stream: closed"}

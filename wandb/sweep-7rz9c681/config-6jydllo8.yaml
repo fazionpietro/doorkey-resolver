@@ -1,0 +1,8 @@
+wandb_version: 1
+
+alpha:
+  value: 0.029137383089292264
+count_c:
+  value: 10
+gamma:
+  value: 0.99

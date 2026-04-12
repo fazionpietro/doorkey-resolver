@@ -1,0 +1,1 @@
+{"reward/shaped":-0.5249999999999996,"hyperparams/epsilon":1,"training/mean_q_value":4.996873378753662,"_wandb":{"runtime":2},"performance/success_rate_100":0,"training/mean_td_error":0.24839644134044647,"reward/raw":0,"_timestamp":1.7759998439675941e+09,"_step":11,"_runtime":2,"training/q_states_unique":978,"training/max_q_value":5,"performance/episode_length":640}

@@ -1,0 +1,4 @@
+[Ep      0/12000] raw_rew=0.00 | eps=1.000 | success=0.00 | states=49
+[Ep    500/12000] raw_rew=0.00 | eps=1.000 | success=0.01 | states=18383
+[Ep   1000/12000] raw_rew=0.00 | eps=1.000 | success=0.02 | states=24244
+[Ep 1320] Run terminato da Hyperband.

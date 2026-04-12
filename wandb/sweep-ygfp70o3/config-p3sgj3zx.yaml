@@ -1,0 +1,12 @@
+wandb_version: 1
+
+alpha:
+  value: 0.22990924571172328
+eps_decay:
+  value: 0.99995
+eps_end:
+  value: 0.1
+gamma:
+  value: 0.999
+shaping_scale:
+  value: 1

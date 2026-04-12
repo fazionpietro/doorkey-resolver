@@ -1,0 +1,13 @@
+[Ep      0/6000] raw_rew=0.00 | eps=1.000 | success=0.00 | states=80
+[Ep    500/6000] raw_rew=0.00 | eps=0.999 | success=0.00 | states=18353
+[Ep   1000/6000] raw_rew=0.00 | eps=0.996 | success=0.02 | states=24187
+[Ep   1500/6000] raw_rew=0.00 | eps=0.985 | success=0.04 | states=27879
+[Ep   2000/6000] raw_rew=0.00 | eps=0.965 | success=0.11 | states=31629
+[Ep   2500/6000] raw_rew=0.00 | eps=0.931 | success=0.20 | states=36779
+[Ep   3000/6000] raw_rew=0.53 | eps=0.881 | success=0.54 | states=45123
+[Ep   3500/6000] raw_rew=0.84 | eps=0.811 | success=0.87 | states=52538
+[Ep   4000/6000] raw_rew=0.00 | eps=0.719 | success=0.83 | states=55959
+[Ep   4500/6000] raw_rew=0.00 | eps=0.599 | success=0.97 | states=57041
+[Ep   5000/6000] raw_rew=0.95 | eps=0.450 | success=0.91 | states=57268
+[Ep   5500/6000] raw_rew=0.95 | eps=0.268 | success=0.97 | states=57452
+[Ep   5999/6000] raw_rew=0.98 | eps=0.050 | success=1.00 | states=57455

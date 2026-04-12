@@ -1,0 +1,8 @@
+[Ep     0/5000] reward=0.000 | eps=1.000 | success_rate=0.00 | q_states=17
+[Ep   200/5000] reward=0.000 | eps=0.990 | success_rate=0.04 | q_states=1855
+[Ep   400/5000] reward=0.000 | eps=0.980 | success_rate=0.06 | q_states=2372
+[Ep   600/5000] reward=0.000 | eps=0.970 | success_rate=0.02 | q_states=2756
+[Ep   800/5000] reward=0.000 | eps=0.961 | success_rate=0.05 | q_states=3035
+[Ep  1000/5000] reward=0.000 | eps=0.951 | success_rate=0.02 | q_states=3266
+[Ep  1200/5000] reward=0.000 | eps=0.942 | success_rate=0.04 | q_states=3510
+[Ep 1279] Run terminato da Hyperband.

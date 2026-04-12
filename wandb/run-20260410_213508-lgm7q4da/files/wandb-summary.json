@@ -1,0 +1,1 @@
+{"success":0,"max_q_value":0.14751258773605078,"_timestamp":1.7758497512796364e+09,"episode_length":640,"epsilon":1,"success_rate_100":0.01,"q_pairs_visited":81087,"_step":235,"_runtime":41.681231868,"episode":235,"mean_q_value":0.003687015641297896,"q_states_unique":11578,"_wandb":{"runtime":41},"episode_reward":0.15384615384615385}

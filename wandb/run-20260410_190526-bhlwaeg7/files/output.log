@@ -1,0 +1,16 @@
+[Ep      0/15000] reward=0.000 | eps=1.000 | success_rate=0.00 | q_states=53
+[Ep    200/15000] reward=0.000 | eps=0.990 | success_rate=0.05 | q_states=10882
+[Ep    400/15000] reward=0.000 | eps=0.980 | success_rate=0.03 | q_states=16841
+[Ep    600/15000] reward=0.000 | eps=0.970 | success_rate=0.04 | q_states=20550
+[Ep    800/15000] reward=0.000 | eps=0.961 | success_rate=0.07 | q_states=24546
+[Ep   1000/15000] reward=0.050 | eps=0.951 | success_rate=0.12 | q_states=27721
+Traceback (most recent call last):
+  File "/home/pietro/anaconda3/envs/grid-ai/lib/python3.10/site-packages/wandb/agents/pyagent.py", line 304, in _run_job
+    self._function()
+  File "/home/pietro/Documenti/doorkey/prova-8x8.py", line 254, in train
+    )
+  File "/home/pietro/Documenti/doorkey/prova-8x8.py", line 181, in run_loop
+    next_obs, reward, done, truncated, _ = env.step(action)
+  File "/home/pietro/Documenti/doorkey/prova-8x8.py", line 135, in extract_state
+    )
+Exception

@@ -1,0 +1,14 @@
+wandb_version: 1
+
+alpha:
+  value: 0.01
+drop_rate:
+  value: 0.3
+eps_end:
+  value: 0.05
+gamma:
+  value: 0.95
+n_steps:
+  value: 8
+shaping_scale:
+  value: 0.5

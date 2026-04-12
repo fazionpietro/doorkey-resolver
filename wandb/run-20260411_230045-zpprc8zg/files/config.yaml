@@ -1,0 +1,48 @@
+_wandb:
+    value:
+        cli_version: 0.25.1
+        e:
+            11p88j34u01w0eyc46zwq6i69hzbdasg:
+                args:
+                    - --mode
+                    - sweep
+                codePath: prova6-8x8.py
+                codePathLocal: prova6-8x8.py
+                email: pietrofazion04@gmail.com
+                executable: /home/pietro/anaconda3/envs/grid-ai/bin/python3
+                host: cachyos
+                os: Linux-6.19.10-1-cachyos-x86_64-with-glibc2.43
+                program: /home/pietro/Documenti/doorkey/prova6-8x8.py
+                python: CPython 3.10.19
+                root: /home/pietro/Documenti/doorkey
+                startedAt: "2026-04-11T21:00:45.114580Z"
+                writerId: 11p88j34u01w0eyc46zwq6i69hzbdasg
+        m: []
+        python_version: 3.10.19
+        t:
+            "3":
+                - 2
+                - 14
+                - 16
+            "4": 3.10.19
+            "5": 0.25.1
+            "12": 0.25.1
+            "13": linux-x86_64
+alpha:
+    value: 0.3
+drop_rate:
+    value: 0.5
+env_id:
+    value: MiniGrid-DoorKey-8x8-v0
+eps_end:
+    value: 0.01
+eps_start:
+    value: 1
+gamma:
+    value: 0.999
+n_episodes:
+    value: 12000
+n_steps:
+    value: 5
+shaping_scale:
+    value: 0.5

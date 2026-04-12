@@ -1,0 +1,12 @@
+wandb_version: 1
+
+alpha:
+  value: 0.01205471398106822
+eps_decay:
+  value: 0.9999
+eps_end:
+  value: 0.05
+gamma:
+  value: 0.99
+n_episodes:
+  value: 5000

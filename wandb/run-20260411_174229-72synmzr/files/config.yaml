@@ -1,0 +1,69 @@
+_wandb:
+    value:
+        cli_version: 0.25.1
+        e:
+            jqnbo1dn1v90cpsjkviu15itzc8am3ow:
+                args:
+                    - --mode
+                    - sweep
+                    - --sweep_count
+                    - "5"
+                codePath: prova4-8x8.py
+                codePathLocal: prova4-8x8.py
+                cpu_count: 8
+                cpu_count_logical: 16
+                cudaVersion: "13.2"
+                disk:
+                    /:
+                        total: "497958244352"
+                        used: "327097925632"
+                email: pietrofazion04@gmail.com
+                executable: /home/pietro/anaconda3/envs/grid-ai/bin/python3
+                gpu: NVIDIA GeForce RTX 3070
+                gpu_count: 1
+                gpu_nvidia:
+                    - architecture: Ampere
+                      cudaCores: 5888
+                      memoryTotal: "8589934592"
+                      name: NVIDIA GeForce RTX 3070
+                      uuid: GPU-99eacb1d-2c2b-d4a4-e7fa-d1e9b50b4579
+                host: cachyos
+                memory:
+                    total: "16627195904"
+                os: Linux-6.19.10-1-cachyos-x86_64-with-glibc2.43
+                program: /home/pietro/Documenti/doorkey/prova4-8x8.py
+                python: CPython 3.10.19
+                root: /home/pietro/Documenti/doorkey
+                startedAt: "2026-04-11T15:42:29.617606Z"
+                writerId: jqnbo1dn1v90cpsjkviu15itzc8am3ow
+        m: []
+        python_version: 3.10.19
+        t:
+            "3":
+                - 2
+                - 14
+                - 16
+            "4": 3.10.19
+            "5": 0.25.1
+            "12": 0.25.1
+            "13": linux-x86_64
+alpha:
+    value: 0.2895299602284096
+decay_frac:
+    value: 0.85
+env_id:
+    value: MiniGrid-DoorKey-8x8-v0
+eps_decay:
+    value: 0.99995
+eps_end:
+    value: 0.05
+eps_start:
+    value: 1
+gamma:
+    value: 0.99
+n_episodes:
+    value: 6000
+shaping_scale:
+    value: 0.5
+warmup_frac:
+    value: 0.05

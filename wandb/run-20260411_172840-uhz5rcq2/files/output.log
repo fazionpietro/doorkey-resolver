@@ -1,0 +1,19 @@
+[Ep      0/15000] raw_rew=0.00 | eps=1.000 | success=0.00 | states=54
+[Ep    500/15000] raw_rew=0.00 | eps=1.000 | success=0.03 | states=18097
+[Ep   1000/15000] raw_rew=0.00 | eps=1.000 | success=0.02 | states=24230
+[Ep   1500/15000] raw_rew=0.00 | eps=1.000 | success=0.00 | states=27493
+[Ep   2000/15000] raw_rew=0.96 | eps=0.500 | success=0.76 | states=31432
+[Ep   2500/15000] raw_rew=0.95 | eps=0.500 | success=0.91 | states=35342
+[Ep   3000/15000] raw_rew=0.95 | eps=0.500 | success=1.00 | states=37716
+[Ep   3500/15000] raw_rew=0.94 | eps=0.500 | success=1.00 | states=39252
+[Ep   4000/15000] raw_rew=0.96 | eps=0.250 | success=1.00 | states=39952
+[Ep   4500/15000] raw_rew=0.96 | eps=0.250 | success=1.00 | states=40355
+[Ep   5000/15000] raw_rew=0.96 | eps=0.250 | success=1.00 | states=40799
+[Ep   5500/15000] raw_rew=0.95 | eps=0.250 | success=1.00 | states=41137
+[Ep   6000/15000] raw_rew=0.98 | eps=0.125 | success=0.97 | states=41431
+[Ep   6500/15000] raw_rew=0.76 | eps=0.125 | success=0.97 | states=41769
+[Ep   7000/15000] raw_rew=0.00 | eps=0.125 | success=0.92 | states=41999
+[34m[1mwandb[0m: Ctrl + C detected. Stopping sweep.
+
+Sweep completato! Controlla wandb.ai per i migliori iperparametri.
+Poi esegui: python script.py --mode train --alpha X --gamma Y --drop_rate Z --n_steps W ...

@@ -1,0 +1,1 @@
+{"max_q_value":0.6183402760965769,"success":1,"q_table_size":36386,"mean_q_value":0.00019747081817876423,"epsilon":0.6065154956247766,"episode_length":23,"success_rate_100":1,"episode_reward":0.9425,"_timestamp":1.7758139460958045e+09,"_wandb":{"runtime":253},"_runtime":253,"episode":4999,"_step":4999}

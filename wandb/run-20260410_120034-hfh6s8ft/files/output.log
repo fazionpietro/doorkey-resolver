@@ -1,0 +1,10 @@
+[Ep     0] reward=0.000 | epsilon=1.000 | success_rate=0.00 | q_states=91
+[Ep   500] reward=0.000 | epsilon=0.951 | success_rate=0.09 | q_states=18046
+[Ep  1000] reward=0.000 | epsilon=0.905 | success_rate=0.25 | q_states=23646
+[Ep  1500] reward=0.000 | epsilon=0.861 | success_rate=0.57 | q_states=27587
+[Ep  2000] reward=0.593 | epsilon=0.819 | success_rate=0.87 | q_states=31668
+[Ep  2500] reward=0.815 | epsilon=0.779 | success_rate=0.99 | q_states=33719
+[Ep  3000] reward=0.748 | epsilon=0.741 | success_rate=0.99 | q_states=34608
+[Ep  3500] reward=0.782 | epsilon=0.705 | success_rate=1.00 | q_states=34881
+[Ep  4000] reward=0.815 | epsilon=0.670 | success_rate=1.00 | q_states=34965
+[Ep  4500] reward=0.940 | epsilon=0.638 | success_rate=0.99 | q_states=35126

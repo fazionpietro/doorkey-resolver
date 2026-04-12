@@ -1,0 +1,1 @@
+{"episode_length":360,"_wandb":{"runtime":114},"episode":1341,"_step":1341,"episode_reward":0,"mean_q_value":9.907282814465914e-07,"success_rate_100":0.04,"q_pairs_visited":24577,"_timestamp":1.775817304498543e+09,"max_q_value":0.0006914632598254005,"epsilon":0.9866695805263007,"success":0,"q_states_unique":3511,"_runtime":114.920941795}

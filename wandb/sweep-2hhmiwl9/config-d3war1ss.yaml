@@ -1,0 +1,10 @@
+wandb_version: 1
+
+alpha:
+  value: 0.02467518747789451
+eps_decay:
+  value: 0.9999
+eps_end:
+  value: 0.05
+gamma:
+  value: 0.95

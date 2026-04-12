@@ -1,0 +1,49 @@
+[Ep      0/15000] reward=0.000 | eps=1.000 | success_rate=0.00 | q_states=44
+[Ep    200/15000] reward=0.000 | eps=0.990 | success_rate=0.05 | q_states=9995
+[Ep    400/15000] reward=0.000 | eps=0.980 | success_rate=0.05 | q_states=15960
+[Ep    600/15000] reward=-0.000 | eps=0.970 | success_rate=0.03 | q_states=20998
+[Ep    800/15000] reward=0.000 | eps=0.961 | success_rate=0.09 | q_states=24690
+[Ep   1000/15000] reward=0.308 | eps=0.951 | success_rate=0.16 | q_states=28291
+[Ep   1200/15000] reward=0.000 | eps=0.942 | success_rate=0.14 | q_states=31484
+[Ep   1400/15000] reward=0.647 | eps=0.932 | success_rate=0.19 | q_states=34343
+[Ep   1600/15000] reward=0.143 | eps=0.923 | success_rate=0.15 | q_states=37627
+[Ep   1800/15000] reward=1.594 | eps=0.914 | success_rate=0.20 | q_states=40220
+[Ep   2000/15000] reward=0.700 | eps=0.905 | success_rate=0.29 | q_states=42999
+[Ep   2200/15000] reward=1.654 | eps=0.896 | success_rate=0.36 | q_states=45594
+[Ep   2400/15000] reward=1.234 | eps=0.887 | success_rate=0.31 | q_states=48538
+[Ep   2600/15000] reward=1.501 | eps=0.878 | success_rate=0.39 | q_states=50905
+[Ep   2800/15000] reward=1.312 | eps=0.869 | success_rate=0.38 | q_states=53361
+[Ep   3000/15000] reward=0.000 | eps=0.861 | success_rate=0.49 | q_states=54717
+[Ep   3200/15000] reward=0.857 | eps=0.852 | success_rate=0.50 | q_states=56006
+[Ep   3400/15000] reward=0.500 | eps=0.844 | success_rate=0.50 | q_states=57634
+[Ep   3600/15000] reward=1.315 | eps=0.835 | success_rate=0.61 | q_states=59036
+[Ep   3800/15000] reward=0.667 | eps=0.827 | success_rate=0.65 | q_states=60403
+[Ep   4000/15000] reward=1.799 | eps=0.819 | success_rate=0.59 | q_states=61405
+[Ep   4200/15000] reward=1.731 | eps=0.811 | success_rate=0.69 | q_states=62440
+[Ep   4400/15000] reward=0.615 | eps=0.802 | success_rate=0.62 | q_states=63182
+[Ep   4600/15000] reward=1.903 | eps=0.794 | success_rate=0.64 | q_states=63573
+[Ep   4800/15000] reward=1.333 | eps=0.787 | success_rate=0.66 | q_states=64302
+[Ep   5000/15000] reward=1.866 | eps=0.779 | success_rate=0.68 | q_states=64980
+[Ep   5200/15000] reward=0.706 | eps=0.771 | success_rate=0.73 | q_states=65488
+[Ep   5400/15000] reward=1.139 | eps=0.763 | success_rate=0.64 | q_states=66046
+[Ep   5600/15000] reward=0.200 | eps=0.756 | success_rate=0.71 | q_states=66518
+[Ep   5800/15000] reward=0.625 | eps=0.748 | success_rate=0.71 | q_states=67055
+[Ep   6000/15000] reward=1.745 | eps=0.741 | success_rate=0.72 | q_states=67438
+[Ep   6200/15000] reward=1.869 | eps=0.733 | success_rate=0.79 | q_states=67744
+[Ep   6400/15000] reward=1.554 | eps=0.726 | success_rate=0.76 | q_states=67926
+[Ep   6600/15000] reward=1.809 | eps=0.719 | success_rate=0.77 | q_states=68113
+[Ep   6800/15000] reward=1.823 | eps=0.712 | success_rate=0.72 | q_states=68551
+[Ep   7000/15000] reward=1.682 | eps=0.705 | success_rate=0.73 | q_states=68918
+[Ep   7200/15000] reward=1.349 | eps=0.698 | success_rate=0.84 | q_states=69144
+[Ep   7400/15000] reward=1.851 | eps=0.691 | success_rate=0.72 | q_states=69621
+[Ep   7600/15000] reward=0.231 | eps=0.684 | success_rate=0.71 | q_states=70118
+[Ep   7800/15000] reward=0.308 | eps=0.677 | success_rate=0.67 | q_states=70412
+[Ep   8000/15000] reward=1.781 | eps=0.670 | success_rate=0.62 | q_states=70742
+[Ep   8200/15000] reward=1.906 | eps=0.664 | success_rate=0.69 | q_states=71053
+[Ep   8400/15000] reward=1.393 | eps=0.657 | success_rate=0.61 | q_states=71262
+[Ep   8600/15000] reward=1.730 | eps=0.650 | success_rate=0.57 | q_states=71538
+[Ep   8800/15000] reward=1.826 | eps=0.644 | success_rate=0.69 | q_states=71703
+[34m[1mwandb[0m: Ctrl + C detected. Stopping sweep.
+
+Sweep completato! Controlla wandb.ai per i migliori iperparametri.
+Poi esegui: python script.py --mode train --alpha X --gamma Y ...

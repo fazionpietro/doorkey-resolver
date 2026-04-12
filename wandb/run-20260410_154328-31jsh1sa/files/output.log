@@ -1,0 +1,29 @@
+[Ep     0/5000] reward=0.111 | eps=1.000 | success_rate=1.00 | q_states=27
+[Ep   200/5000] reward=0.000 | eps=0.980 | success_rate=0.70 | q_states=1845
+[Ep   400/5000] reward=0.278 | eps=0.961 | success_rate=0.72 | q_states=2540
+[Ep   600/5000] reward=0.000 | eps=0.942 | success_rate=0.83 | q_states=3190
+[Ep   800/5000] reward=1.290 | eps=0.923 | success_rate=0.92 | q_states=3889
+[Ep  1000/5000] reward=1.438 | eps=0.905 | success_rate=0.91 | q_states=4283
+[Ep  1200/5000] reward=0.250 | eps=0.887 | success_rate=0.98 | q_states=4549
+[Ep  1400/5000] reward=0.312 | eps=0.869 | success_rate=0.98 | q_states=4758
+[Ep  1600/5000] reward=0.690 | eps=0.852 | success_rate=0.98 | q_states=4948
+[Ep  1800/5000] reward=1.330 | eps=0.835 | success_rate=1.00 | q_states=5034
+[Ep  2000/5000] reward=1.308 | eps=0.819 | success_rate=1.00 | q_states=5119
+[Ep  2200/5000] reward=0.900 | eps=0.802 | success_rate=0.99 | q_states=5219
+[Ep  2400/5000] reward=1.040 | eps=0.787 | success_rate=1.00 | q_states=5221
+[Ep  2600/5000] reward=0.214 | eps=0.771 | success_rate=1.00 | q_states=5257
+[Ep  2800/5000] reward=1.137 | eps=0.756 | success_rate=1.00 | q_states=5313
+[Ep  3000/5000] reward=0.286 | eps=0.741 | success_rate=1.00 | q_states=5326
+[Ep  3200/5000] reward=1.347 | eps=0.726 | success_rate=1.00 | q_states=5337
+[Ep  3400/5000] reward=1.380 | eps=0.712 | success_rate=1.00 | q_states=5356
+[Ep  3600/5000] reward=1.407 | eps=0.698 | success_rate=1.00 | q_states=5356
+[Ep  3800/5000] reward=1.310 | eps=0.684 | success_rate=1.00 | q_states=5356
+[Ep  4000/5000] reward=1.392 | eps=0.670 | success_rate=1.00 | q_states=5365
+[Ep  4200/5000] reward=0.927 | eps=0.657 | success_rate=1.00 | q_states=5367
+[Ep  4400/5000] reward=1.448 | eps=0.644 | success_rate=1.00 | q_states=5378
+[Ep  4600/5000] reward=1.450 | eps=0.631 | success_rate=1.00 | q_states=5378
+[Ep  4800/5000] reward=1.422 | eps=0.619 | success_rate=1.00 | q_states=5408
+[34m[1mwandb[0m: Ctrl + C detected. Stopping sweep.
+
+Sweep completato! Controlla wandb.ai per i migliori iperparametri.
+Poi esegui: python script.py --mode train --alpha X --gamma Y ...

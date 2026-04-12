@@ -1,0 +1,8 @@
+[Ep     0/12000] reward=0.000 | mean_eps=0.571 | success_rate=0.00 | q_states=53
+[34m[1mwandb[0m: [33mWARNING[0m Fatal error while uploading data. Some run data will not be synced, but it will still be written to disk. Use `wandb sync` at the end of the run to try uploading.
+[Ep   200/12000] reward=0.000 | mean_eps=0.547 | success_rate=0.00 | q_states=7838
+[Ep   400/12000] reward=0.000 | mean_eps=0.515 | success_rate=0.00 | q_states=11919
+[34m[1mwandb[0m: Ctrl + C detected. Stopping sweep.
+
+Sweep completato! Controlla wandb.ai per i migliori iperparametri.
+Poi esegui: python script.py --mode train --alpha X --gamma Y --count_c Z

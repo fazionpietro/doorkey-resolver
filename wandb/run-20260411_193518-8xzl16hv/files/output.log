@@ -1,0 +1,14 @@
+[Ep      0/6000] raw_rew=0.00 | eps=1.000 | success=0.00 | states=25
+[Ep    500/6000] raw_rew=0.00 | eps=1.000 | success=0.01 | states=17625
+[Ep   1000/6000] raw_rew=0.00 | eps=1.000 | success=0.02 | states=23812
+[Ep   1500/6000] raw_rew=0.88 | eps=0.300 | success=0.98 | states=32074
+Traceback (most recent call last):
+  File "/home/pietro/anaconda3/envs/grid-ai/lib/python3.10/site-packages/wandb/agents/pyagent.py", line 304, in _run_job
+    self._function()
+  File "/home/pietro/Documenti/doorkey/prova6-8x8.py", line 336, in train
+    run_loop(run.config, N_EP_SWEEP)
+  File "/home/pietro/Documenti/doorkey/prova6-8x8.py", line 261, in run_loop
+    next_state = extract_state(next_obs)
+  File "/home/pietro/Documenti/doorkey/prova6-8x8.py", line 189, in extract_state
+    return image[:, :, [0, 2]].tobytes()
+Exception
