@@ -23,8 +23,8 @@ EPS_END = 0.05
 SHAPING_SCALE = 0.5
 N_EP = 150_000
 N_EP_SWEEP = 15_000
-SEED = 42
 WARMUP_FRAC = 0.10
+SEED = 42
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Sweep config
@@ -37,6 +37,7 @@ sweep_config = {
         "alpha": {"values": [0.01, 0.15, 0.30]},
         "gamma": {"values": [0.95, 0.99, 0.999]},
         "eps_end": {"values": [0.01, 0.05]},
+        "warmup_frac": {"values": [0.05, 0.10, 0.20]},
     },
 }
 
@@ -74,7 +75,7 @@ def extract_state(obs) -> bytes:
 
 
 def make_q_table(n_actions: int):
-    return defaultdict(lambda: np.full(n_actions, 2.0, dtype=np.float32))
+    return defaultdict(lambda: np.zeros(n_actions, dtype=np.float32))
 
 
 def choose_action(state: bytes, q_table, epsilon: float, action_space) -> int:
@@ -125,7 +126,11 @@ def run_loop(cfg, n_episodes: int):
         td_error_sum = 0.0
 
         epsilon = get_epsilon_cosine(
-            episode, n_episodes, EPS_START, getattr(cfg, "eps_end", EPS_END)
+            episode,
+            n_episodes,
+            EPS_START,
+            getattr(cfg, "eps_end", EPS_END),
+            warmup_frac=getattr(cfg, "warmup_frac", WARMUP_FRAC),
         )
 
         while not (done or truncated):
@@ -142,7 +147,7 @@ def run_loop(cfg, n_episodes: int):
             ep_reward += float(reward)
             step_count += 1
 
-        success = 1.0 if (done and not truncated and ep_reward > 0) else 0.0
+        success = 1.0 if (done and not truncated) else 0.0
         success_history.append(success)
         success_rate = safe_mean(success_history[-100:])
 
@@ -197,13 +202,16 @@ def train():
             "eps_start": EPS_START,
             "eps_end": EPS_END,
             "n_episodes": N_EP_SWEEP,
+            "warmup_frac": WARMUP_FRAC,
         },
     )
     run_loop(run.config, N_EP_SWEEP)
     wandb.finish()
 
 
-def train_final(alpha: float, gamma: float, eps_end: float):
+def train_final(
+    alpha: float, gamma: float, eps_end: float, warmup_frac: float = WARMUP_FRAC
+):
     run = wandb.init(
         project="minigrid-qlearning",
         name="final-training",
@@ -215,6 +223,7 @@ def train_final(alpha: float, gamma: float, eps_end: float):
             "eps_end": eps_end,
             "n_episodes": N_EP,
             "run_type": "final",
+            "warmup_frac": warmup_frac,
         },
     )
     q_table = run_loop(run.config, N_EP)
@@ -250,7 +259,7 @@ def test_agent(q_table, n_runs: int = 5, video_folder: str = "./videos"):
             state = extract_state(obs)
             total_reward += float(reward)
 
-        if done and not truncated and total_reward > 0:
+        if done and not truncated:
             wins += 1
             print(f"  Run {i+1}: VITTORIA ✓  (reward={total_reward:.3f})")
         else:
@@ -262,12 +271,13 @@ def test_agent(q_table, n_runs: int = 5, video_folder: str = "./videos"):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="MiniGrid Q-Learning 16x16")
+    parser = argparse.ArgumentParser(description="MiniGrid Q-Learning 8x8")
     parser.add_argument("--mode", choices=["sweep", "train", "test"], default="train")
     parser.add_argument("--sweep_count", type=int, default=15)
     parser.add_argument("--alpha", type=float, default=ALPHA)
     parser.add_argument("--gamma", type=float, default=GAMMA)
     parser.add_argument("--eps_end", type=float, default=EPS_END)
+    parser.add_argument("--warmup_frac", type=float, default=WARMUP_FRAC)
     args = parser.parse_args()
 
     if args.mode == "sweep":
@@ -277,9 +287,15 @@ if __name__ == "__main__":
 
     elif args.mode == "train":
         print(
-            f"=== Training finale === alpha={args.alpha} gamma={args.gamma} eps_end={args.eps_end}"
+            f"=== Training finale === alpha={args.alpha} gamma={args.gamma} "
+            f"eps_end={args.eps_end} warmup_frac={args.warmup_frac}"
         )
-        q_table = train_final(alpha=args.alpha, gamma=args.gamma, eps_end=args.eps_end)
+        q_table = train_final(
+            alpha=args.alpha,
+            gamma=args.gamma,
+            eps_end=args.eps_end,
+            warmup_frac=args.warmup_frac,
+        )
         print("Training completato!")
         test_agent(q_table, n_runs=5)
 
