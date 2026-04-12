@@ -1,1 +1,0 @@
-{"q_pairs_visited":174188,"episode_reward":0,"_step":1101,"episode":1101,"_wandb":{"runtime":172},"episode_length":640,"mean_q_value":4.8074492951855063e-05,"success":0,"max_q_value":0.026642458513379097,"_timestamp":1.7758547455126727e+09,"success_rate_100":0.04,"q_states_unique":24842,"_runtime":172.532859882,"epsilon":1}

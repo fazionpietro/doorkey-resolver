@@ -1,5 +1,0 @@
-[Ep      0/7000] raw_rew=0.00 | eps=1.000 | success=0.00 | states=41
-[Ep    500/7000] raw_rew=0.00 | eps=0.988 | success=0.02 | states=18596
-[Ep   1000/7000] raw_rew=0.00 | eps=0.951 | success=0.04 | states=24436
-[Ep   1500/7000] raw_rew=0.00 | eps=0.892 | success=0.10 | states=29104
-[Ep   2000/7000] raw_rew=0.00 | eps=0.814 | success=0.16 | states=34872

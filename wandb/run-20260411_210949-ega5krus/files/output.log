@@ -1,9 +1,0 @@
-[Ep      0/4000] raw_rew=0.00 | eps=1.000 | success=0.00 | states=61
-[Ep    500/4000] raw_rew=0.00 | eps=1.000 | success=0.03 | states=18123
-[Ep   1000/4000] raw_rew=0.00 | eps=0.300 | success=0.39 | states=32247
-[Ep   1500/4000] raw_rew=0.00 | eps=0.300 | success=0.31 | states=44316
-[Ep   2000/4000] raw_rew=0.00 | eps=0.090 | success=0.32 | states=51322
-[Ep   2500/4000] raw_rew=0.00 | eps=0.050 | success=0.35 | states=56488
-[Ep   3000/4000] raw_rew=0.00 | eps=0.050 | success=0.34 | states=61810
-[Ep   3500/4000] raw_rew=0.89 | eps=0.050 | success=0.39 | states=66189
-[Ep   3999/4000] raw_rew=0.00 | eps=0.050 | success=0.55 | states=69882

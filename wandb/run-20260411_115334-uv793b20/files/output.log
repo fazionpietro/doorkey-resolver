@@ -1,8 +1,0 @@
-[Ep      0/15000] reward=0.080 | eps=1.000 | success_rate=0.00 | q_states=389
-[Ep    200/15000] reward=0.034 | eps=1.000 | success_rate=0.00 | q_states=61574
-[Ep    400/15000] reward=0.000 | eps=1.000 | success_rate=0.00 | q_states=126896
-[Ep    600/15000] reward=0.000 | eps=1.000 | success_rate=0.00 | q_states=189655
-[34m[1mwandb[0m: Ctrl + C detected. Stopping sweep.
-
-Sweep completato! Controlla wandb.ai per i migliori iperparametri.
-Poi esegui: python script.py --mode train --alpha X --gamma Y ...

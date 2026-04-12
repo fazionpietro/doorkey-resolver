@@ -1,8 +1,0 @@
-[Ep      0/15000] reward=0.168 | eps=1.000 | success_rate=0.00 | q_states=275
-[Ep    200/15000] reward=0.041 | eps=1.000 | success_rate=0.01 | q_states=63410
-[Ep    400/15000] reward=0.018 | eps=1.000 | success_rate=0.00 | q_states=126206
-[Ep    600/15000] reward=0.024 | eps=1.000 | success_rate=0.01 | q_states=189718
-[Ep    800/15000] reward=0.000 | eps=1.000 | success_rate=0.01 | q_states=251209
-[Ep   1000/15000] reward=0.000 | eps=1.000 | success_rate=0.00 | q_states=312282
-[Ep   1200/15000] reward=0.000 | eps=1.000 | success_rate=0.01 | q_states=369744
-[Ep   1400/15000] reward=-0.000 | eps=1.000 | success_rate=0.00 | q_states=427702
