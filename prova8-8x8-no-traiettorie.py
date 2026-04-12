@@ -125,7 +125,11 @@ def run_loop(cfg, n_episodes: int):
         td_error_sum = 0.0
 
         epsilon = get_epsilon_cosine(
-            episode, n_episodes, EPS_START, getattr(cfg, "eps_end", EPS_END)
+            episode,
+            n_episodes,
+            EPS_START,
+            getattr(cfg, "eps_end", EPS_END),
+            warmup_frac=getattr(cfg, "warmup_frac", WARMUP_FRAC),
         )
 
         while not (done or truncated):

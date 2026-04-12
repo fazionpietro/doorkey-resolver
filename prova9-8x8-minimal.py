@@ -6,6 +6,7 @@ import random
 import math
 from collections import defaultdict
 from minigrid.wrappers import FullyObsWrapper
+from minigrid.minigrid_env import MiniGridEnv
 from typing import cast
 from gymnasium.wrappers import RecordVideo
 import wandb
@@ -20,7 +21,6 @@ ALPHA = 0.1
 GAMMA = 0.99
 EPS_START = 1.0
 EPS_END = 0.05
-SHAPING_SCALE = 0.5
 N_EP = 150_000
 N_EP_SWEEP = 15_000
 WARMUP_FRAC = 0.10
@@ -69,16 +69,63 @@ def safe_mean(lst: list) -> float:
     return float(np.mean(lst)) if lst else 0.0
 
 
-def extract_state(obs) -> bytes:
-    image = obs["image"]
-    return image[:, :, [0, 2]].tobytes()
+def extract_state(obs, env: gym.Env) -> tuple:
+    """
+    Stato compatto: solo info davvero utili.
+    - posizione agente (x, y)
+    - direzione agente (0-3)
+    - ha la chiave? (bool)
+    - porta aperta? (bool)
+    - posizione chiave (x, y) — cambia ogni episodio!
+    - posizione goal (x, y)  — cambia ogni episodio!
+
+    Spazio stati: ~8x8 * 4 * 2 * 2 * possibili_pos_key * possibili_pos_goal
+    Ordine di grandezza: ~50k stati max. Q-learning converge bene.
+    """
+    u = cast(MiniGridEnv, env.unwrapped)
+
+    agent_pos = tuple(u.agent_pos)
+    agent_dir = int(u.agent_dir)
+    has_key = int(u.carrying is not None and u.carrying.type == "key")
+
+    # trova porta e stato
+    door_open = 1
+    door_pos = (0, 0)
+    for x in range(u.width):
+        for y in range(u.height):
+            cell = u.grid.get(x, y)
+            if cell is not None and cell.type == "door":
+                door_pos = (x, y)
+                door_open = int(not getattr(cell, "is_locked", False))
+                break
+
+    # trova chiave (se ancora sul pavimento)
+    key_pos = (-1, -1)  # -1 = agente ce l'ha
+    if not has_key:
+        for x in range(u.width):
+            for y in range(u.height):
+                cell = u.grid.get(x, y)
+                if cell is not None and cell.type == "key":
+                    key_pos = (x, y)
+                    break
+
+    # trova goal
+    goal_pos = (0, 0)
+    for x in range(u.width):
+        for y in range(u.height):
+            cell = u.grid.get(x, y)
+            if cell is not None and cell.type == "goal":
+                goal_pos = (x, y)
+                break
+
+    return (agent_pos, agent_dir, has_key, door_open, key_pos, goal_pos)
 
 
 def make_q_table(n_actions: int):
     return defaultdict(lambda: np.zeros(n_actions, dtype=np.float32))
 
 
-def choose_action(state: bytes, q_table, epsilon: float, action_space) -> int:
+def choose_action(state: tuple, q_table, epsilon: float, action_space) -> int:
     if random.random() < epsilon:
         return action_space.sample()
     return int(q_table[state].argmax())
@@ -86,10 +133,10 @@ def choose_action(state: bytes, q_table, epsilon: float, action_space) -> int:
 
 def update_q_table(
     q_table,
-    state: bytes,
+    state: tuple,
     action: int,
     reward: float,
-    next_state: bytes,
+    next_state: tuple,
     alpha: float,
     gamma: float,
 ) -> float:
@@ -114,11 +161,11 @@ def run_loop(cfg, n_episodes: int):
     q_table = make_q_table(n_actions)
 
     success_history: list[float] = []
-    visited_states: set[bytes] = set()
+    visited_states: set[tuple] = set()
 
     for episode in range(n_episodes):
         obs, _ = env.reset()
-        state = extract_state(obs)
+        state = extract_state(obs, env)
         done = False
         truncated = False
         ep_reward = 0.0
@@ -136,7 +183,7 @@ def run_loop(cfg, n_episodes: int):
         while not (done or truncated):
             action = choose_action(state, q_table, epsilon, env.action_space)
             next_obs, reward, done, truncated, info = env.step(action)
-            next_state = extract_state(next_obs)
+            next_state = extract_state(next_obs, env)
 
             td_err = update_q_table(
                 q_table, state, action, float(reward), next_state, cfg.alpha, cfg.gamma
@@ -246,7 +293,7 @@ def test_agent(q_table, n_runs: int = 5, video_folder: str = "./videos"):
     wins = 0
     for i in range(n_runs):
         obs, _ = env.reset()
-        state = extract_state(obs)
+        state = extract_state(obs, env)
         done = False
         truncated = False
         total_reward = 0.0
@@ -256,7 +303,7 @@ def test_agent(q_table, n_runs: int = 5, video_folder: str = "./videos"):
                 state, q_table, epsilon=0.0, action_space=env.action_space
             )
             obs, reward, done, truncated, _ = env.step(action)
-            state = extract_state(obs)
+            state = extract_state(obs, env)
             total_reward += float(reward)
 
         if done and not truncated:
@@ -271,7 +318,9 @@ def test_agent(q_table, n_runs: int = 5, video_folder: str = "./videos"):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="MiniGrid Q-Learning 8x8")
+    parser = argparse.ArgumentParser(
+        description="MiniGrid Q-Learning 8x8 compact state"
+    )
     parser.add_argument("--mode", choices=["sweep", "train", "test"], default="train")
     parser.add_argument("--sweep_count", type=int, default=15)
     parser.add_argument("--alpha", type=float, default=ALPHA)
