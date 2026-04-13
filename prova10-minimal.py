@@ -1,3 +1,4 @@
+
 import gymnasium as gym
 from gymnasium.spaces import Discrete
 import minigrid
@@ -25,6 +26,8 @@ N_EP = 70_000
 N_EP_SWEEP = 15_000
 SEED = 42
 WARMUP_FRAC = 0.10
+DROP_RATE = 0.3
+N_STEPS = 4
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Sweep config
@@ -49,23 +52,20 @@ def make_env(env_id: str, render_mode: str | None = None) -> gym.Env:
     return FullyObsWrapper(base_env)
 
 
-def get_epsilon_cosine(
+
+def decrease_epsilon_step(
     episode: int,
     n_episodes: int,
     eps_start: float,
     eps_end: float,
-    warmup_frac: float = WARMUP_FRAC,
+    n_steps: int,
 ) -> float:
-    warmup_ep = int(n_episodes * warmup_frac)
-    decay_ep = n_episodes - warmup_ep;
-    if episode < warmup_ep:
-        return eps_start
-    elif episode >= warmup_ep and episode < decay_ep:
-        progress = (episode - 2* warmup_ep) / (n_episodes - warmup_ep)
-        cosine_decay = 0.5 * (1 + math.cos(math.pi * progress))
-        return eps_end + (eps_start - eps_end) * cosine_decay
-    else: 
-        return eps_end
+    step_size =  n_episodes / n_steps
+    current_step =math.floor(episode/step_size)
+
+    epsilon = eps_start - current_step/n_steps
+
+    return max(eps_end, epsilon)
 
 def safe_mean(lst: list) -> float:
     return float(np.mean(lst)) if lst else 0.0
@@ -127,12 +127,13 @@ def run_loop(cfg, n_episodes: int):
         step_count = 0
         td_error_sum = 0.0
 
-        epsilon = get_epsilon_cosine(
+        epsilon = decrease_epsilon_step(
             episode,
             n_episodes,
             EPS_START,
-            getattr(cfg, "eps_end", EPS_END),
-            warmup_frac=getattr(cfg, "warmup_frac", WARMUP_FRAC),
+            getattr(cfg, "eps_end", EPS_END),  
+            n_steps=N_STEPS
+
         )
 
         while not (done or truncated):

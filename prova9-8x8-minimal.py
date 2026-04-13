@@ -21,7 +21,7 @@ ALPHA = 0.1
 GAMMA = 0.99
 EPS_START = 1.0
 EPS_END = 0.05
-N_EP = 150_000
+N_EP = 70_000
 N_EP_SWEEP = 15_000
 WARMUP_FRAC = 0.10
 SEED = 42
@@ -58,11 +58,15 @@ def get_epsilon_cosine(
     warmup_frac: float = WARMUP_FRAC,
 ) -> float:
     warmup_ep = int(n_episodes * warmup_frac)
+    decay_ep = n_episodes - warmup_ep;
     if episode < warmup_ep:
         return eps_start
-    progress = (episode - warmup_ep) / (n_episodes - warmup_ep)
-    cosine_decay = 0.5 * (1 + math.cos(math.pi * progress))
-    return eps_end + (eps_start - eps_end) * cosine_decay
+    elif episode >= warmup_ep and episode < decay_ep:
+        progress = (episode - warmup_ep) / (n_episodes - warmup_ep)
+        cosine_decay = 0.5 * (1 + math.cos(math.pi * progress))
+        return eps_end + (eps_start - eps_end) * cosine_decay
+    else: 
+        return eps_end
 
 
 def safe_mean(lst: list) -> float:
