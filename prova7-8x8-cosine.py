@@ -26,8 +26,10 @@ EPS_END = 0.05
 
 SHAPING_SCALE = 0.5
 N_EP = 50_000
-N_EP_SWEEP = 7_000
+N_EP_SWEEP = 4_000
 SEED = 42
+
+K = 1
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Sweep config (Aggiornato per Cosine Annealing)
@@ -41,6 +43,7 @@ sweep_config = {
         "gamma": {"values": [0.95, 0.99, 0.999]},
         "eps_end": {"values": [0.01, 0.05]},
         "shaping_scale": {"values": [0.5, 1.0]},
+        "k": {"values": [0.5, 1.0, 2.0]},
     },
 }
 
@@ -160,13 +163,14 @@ def make_env(
 
 
 def get_epsilon_cosine(
-    episode: int, n_episodes: int, eps_start: float, eps_end: float
+    episode: int,
+    n_episodes: int,
+    eps_start: float,
+    eps_end: float,
+    k: float = K,
 ) -> float:
-    """Calcola epsilon seguendo la curva del coseno (Cosine Annealing)."""
-    if episode >= n_episodes:
-        return eps_end
     progress = episode / n_episodes
-    cosine_decay = 0.5 * (1 + math.cos(math.pi * progress))
+    cosine_decay = 0.5 * (1 + math.cos(math.pi * (progress**k)))
     return eps_end + (eps_start - eps_end) * cosine_decay
 
 
@@ -236,7 +240,11 @@ def run_loop(cfg, n_episodes: int):
 
         # Cosine Annealing per l'Epsilon
         epsilon = get_epsilon_cosine(
-            episode, n_episodes, EPS_START, getattr(cfg, "eps_end", EPS_END)
+            episode,
+            n_episodes,
+            EPS_START,
+            getattr(cfg, "eps_end", EPS_END),
+            k=getattr(cfg, "k", K),
         )
 
         while not (done or truncated):
@@ -405,7 +413,7 @@ if __name__ == "__main__":
     parser.add_argument("--gamma", type=float, default=GAMMA)
     parser.add_argument("--eps_end", type=float, default=EPS_END)
     parser.add_argument("--shaping_scale", type=float, default=SHAPING_SCALE)
-
+    parser.add_argument("--k", type=float, default=K)
     args = parser.parse_args()
 
     if args.mode == "sweep":

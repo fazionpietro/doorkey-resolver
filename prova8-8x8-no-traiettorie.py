@@ -57,15 +57,19 @@ def get_epsilon_cosine(
     warmup_frac: float = WARMUP_FRAC,
 ) -> float:
     warmup_ep = int(n_episodes * warmup_frac)
-    decay_ep = n_episodes - warmup_ep;
-    if episode < warmup_ep:
+    exploit_ep = warmup_ep
+    decay_start = warmup_ep
+    decay_end = n_episodes - exploit_ep
+
+    if episode < decay_start:
         return eps_start
-    elif episode >= warmup_ep and episode < decay_ep:
-        progress = (episode - 2* warmup_ep) / (n_episodes - warmup_ep)
+    elif episode >= decay_end:
+        return eps_end
+    else:
+        progress = (episode - decay_start) / (decay_end - decay_start)
         cosine_decay = 0.5 * (1 + math.cos(math.pi * progress))
         return eps_end + (eps_start - eps_end) * cosine_decay
-    else: 
-        return eps_end
+
 
 def safe_mean(lst: list) -> float:
     return float(np.mean(lst)) if lst else 0.0
