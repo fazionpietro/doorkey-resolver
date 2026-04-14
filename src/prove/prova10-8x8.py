@@ -15,12 +15,12 @@ import argparse
 # ──────────────────────────────────────────────────────────────────────────────
 # Configurazione Globale
 # ──────────────────────────────────────────────────────────────────────────────
-ENV_ID = "MiniGrid-DoorKey-8x8-v0"
+ENV_ID = "MiniGrid-DoorKey-6x6-v0"
 ALPHA = 0.1
 GAMMA = 0.99
 EPS_START = 1.0
 EPS_END = 0.05
-N_EP = 70_000
+N_EP = 25_000
 N_EP_SWEEP = 15_000
 SEED = 42
 
@@ -37,7 +37,6 @@ sweep_config = {
         "alpha": {"values": [0.01, 0.15, 0.30]},
         "gamma": {"values": [0.95, 0.99, 0.999]},
         "eps_end": {"values": [0.01, 0.05]},
-        "warmup_frac": {"values": [0.05, 0.10, 0.20]},
         "exploit_frac": {"values": [0.05, 0.10, 0.20]},
         "k": {"values": [0.5, 1.0, 2.0]},
     },
@@ -292,7 +291,6 @@ if __name__ == "__main__":
         print(
             f"=== Training finale === alpha={args.alpha} gamma={args.gamma} "
             f"eps_end={args.eps_end} k={args.k} "
-            f"warmup={args.warmup_frac} exploit={args.exploit_frac}"
         )
         q_table = train_final(
             alpha=args.alpha,
