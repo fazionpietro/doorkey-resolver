@@ -78,7 +78,7 @@ class QLearningAgent:
         gamma=0.99,
         epsilon=1.0,
         epsilon_min=0.05,
-        epsilon_decay=0.995,  # Cambiato a decadimento esponenziale standard per convergere prima
+        epsilon_decay=0.995,
     ):
         self.n_actions = n_actions
         self.alpha = alpha
@@ -91,7 +91,12 @@ class QLearningAgent:
     def act(self, state, greedy=False):
         if not greedy and np.random.rand() < self.epsilon:
             return np.random.randint(self.n_actions)
-        return int(np.argmax(self.q[state]))
+
+        q_values = self.q[state]
+        max_q = np.max(q_values)
+        best_actions = np.flatnonzero(q_values == max_q)
+
+        return int(np.random.choice(best_actions))
 
     def update(self, s, a, r, s_next, done):
         best_next = 0.0 if done else np.max(self.q[s_next])
@@ -113,7 +118,7 @@ class Trainer:
     def train(self, episodes=5000, max_steps=300, log_every=100):
         rewards = []
         avg_rewards = []
-        success_buffer = deque(maxlen=100)  # Finestra mobile per il success rate
+        success_buffer = deque(maxlen=100)
 
         for ep in range(episodes):
             obs, info = self.env.reset()
@@ -287,13 +292,15 @@ def main():
             "method": "bayes",
             "metric": {"name": "eval/success_rate", "goal": "maximize"},
             "parameters": {
-                "alpha":     {"min": 0.05, "max": 0.5},
-                "gamma":     {"min": 0.90, "max": 0.999},
+                "alpha": {"min": 0.05, "max": 0.5},
+                "gamma": {"min": 0.90, "max": 0.999},
                 "eps_decay": {"min": 0.990, "max": 0.9995},
             },
         }
         sweep_id = wandb.sweep(sweep_config, project=args.project_name)
-        print(f"Sweep creato automaticamente: id='{sweep_id}' | count={args.sweep_count}")
+        print(
+            f"Sweep creato automaticamente: id='{sweep_id}' | count={args.sweep_count}"
+        )
         wandb.agent(sweep_id, function=train_sweep, count=args.sweep_count)
         return
 
@@ -343,7 +350,7 @@ def main():
     print("=" * 40)
 
     env_vis = make_env(render_mode="human", reward_config=cfg)
-    test_episodes = 3
+    test_episodes = 10
 
     for ep in range(test_episodes):
         obs, info = env_vis.reset()
