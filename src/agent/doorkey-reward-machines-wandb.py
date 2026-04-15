@@ -257,19 +257,49 @@ def train_sweep():
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    # Qui puoi definire i parametri di default per la singola run
+    parser = argparse.ArgumentParser(
+        description="DoorKey Q-Learning con WandB. Usa --mode per scegliere tra training singolo e sweep."
+    )
+    parser.add_argument(
+        "--mode",
+        type=str,
+        choices=["train", "sweep"],
+        default="train",
+        help="'train' per una singola run, 'sweep' per avviare un WandB sweep agent (default: train)",
+    )
+    # Parametri per la singola run
     parser.add_argument("--episodes", type=int, default=5000)
     parser.add_argument("--alpha", type=float, default=0.15)
     parser.add_argument("--gamma", type=float, default=0.99)
     parser.add_argument("--eps_decay", type=float, default=0.995)
     parser.add_argument("--project_name", type=str, default="doorkey-qlearning")
+    # Parametri per lo sweep
+    parser.add_argument(
+        "--sweep_count",
+        type=int,
+        default=20,
+        help="Numero di run da eseguire nello sweep (default: 20).",
+    )
     args = parser.parse_args()
 
-    # Inizializza Weights & Biases per una RUN SINGOLA (niente Sweep)
+    if args.mode == "sweep":
+        sweep_config = {
+            "method": "bayes",
+            "metric": {"name": "eval/success_rate", "goal": "maximize"},
+            "parameters": {
+                "alpha":     {"min": 0.05, "max": 0.5},
+                "gamma":     {"min": 0.90, "max": 0.999},
+                "eps_decay": {"min": 0.990, "max": 0.9995},
+            },
+        }
+        sweep_id = wandb.sweep(sweep_config, project=args.project_name)
+        print(f"Sweep creato automaticamente: id='{sweep_id}' | count={args.sweep_count}")
+        wandb.agent(sweep_id, function=train_sweep, count=args.sweep_count)
+        return
+
     wandb.init(
         project=args.project_name,
-        name=f"Run_ep{args.episodes}_alpha{args.alpha}",  # Dà un nome carino alla run su WandB
+        name=f"Run_ep{args.episodes}_alpha{args.alpha}",
         config={
             "episodes": args.episodes,
             "learning_rate": args.alpha,
