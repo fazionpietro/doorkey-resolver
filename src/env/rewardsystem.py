@@ -30,8 +30,8 @@ class RewardConfig:
     key_bonus: float = 0.2
     door_bonus: float = 0.2
     goal_bonus: float = 0.4
-    regression_penalty: float = -0.1
-    time_penalty: float = -0.001
+    regression_penalty: float = -0.3
+    time_penalty: float = -0.01
     shaping_scale: float = 0.5
     gamma: float = 0.99
 
@@ -78,6 +78,7 @@ class DoorKeyRewardSystem(gym.Wrapper):
         self.completed_milestones: set[str] = set()
 
     def reset(self, **kwargs):
+
         obs, info = self.env.reset(**kwargs)
 
         self._reset_tracker()
@@ -85,9 +86,9 @@ class DoorKeyRewardSystem(gym.Wrapper):
         base_env = self._get_base_env()
         agent_start = tuple(base_env.agent_pos)
 
-        self.key_pos = self._find_key_position()
-        self.door_pos = self._find_door_position()
-        self.goal_pos = self._find_goal_position()
+        self.key_pos = self._find_stage_goal_position("key")
+        self.door_pos = self._find_stage_goal_position("door")
+        self.goal_pos = self._find_stage_goal_position("goal")
 
         self.stage_ref_distances = {
             Stage.NO_KEY: max(1, self._bfs_distance(agent_start, self.key_pos)),
@@ -211,6 +212,9 @@ class DoorKeyRewardSystem(gym.Wrapper):
 
         if prev_events.has_key and not curr_events.has_key:
             regressions.add("lost_key")
+
+        if prev_events.door_open and not curr_events.door_open:
+            regressions.add("closed_door")
         return regressions
 
     def _compute_stage_progress(self, stage: Stage) -> float:
@@ -286,7 +290,7 @@ class DoorKeyRewardSystem(gym.Wrapper):
 
     def _compute_regression_penalty(self, regressions: set[str]) -> float:
         penality = 0.0
-        if "lost_key" in regressions:
+        if "lost_key" in regressions or "closed_door" in regressions:
             penality += self.config.regression_penalty
 
         return penality
@@ -302,7 +306,6 @@ class DoorKeyRewardSystem(gym.Wrapper):
         return RewardBreakdown(
             env_reward=env_reward,
             stage_bonus=self._compute_stage_bonus(milestones),
-            # Passiamo sia gli stage della classe che i progressi ricevuti come argomento
             progress_shaping=self._compute_progress_shaping(
                 self.prev_stage, self.curr_stage, prev_progress, curr_progress
             ),
@@ -337,6 +340,7 @@ class DoorKeyRewardSystem(gym.Wrapper):
         info["milestones"] = sorted(milestones)
         info["regressions"] = sorted(regressions)
         info["completed_milestones"] = sorted(self.completed_milestones)
+        info["stage_progress"] = self.curr_progress
 
         info["reward_breakdown"] = {
             "env_reward": reward_parts.env_reward,
@@ -349,37 +353,15 @@ class DoorKeyRewardSystem(gym.Wrapper):
 
         return info
 
-    def _find_key_position(self) -> tuple[int, int]:
+    def _find_stage_goal_position(self, goal) -> tuple[int, int]:
         base_env = self._get_base_env()
         grid = base_env.grid
         for x in range(grid.width):
             for y in range(grid.height):
                 obj = grid.get(x, y)
-                if obj is not None and obj.type == "key":
+                if obj is not None and obj.type == goal:
                     return (x, y)
-
-        raise RuntimeError("Key not found in grid")
-
-    def _find_door_position(self) -> tuple[int, int]:
-        base_env = self._get_base_env()
-        grid = base_env.grid
-        for x in range(grid.width):
-            for y in range(grid.height):
-                obj = grid.get(x, y)
-                if obj is not None and obj.type == "door":
-                    return (x, y)
-
-        raise RuntimeError("Door not found in grid")
-
-    def _find_goal_position(self) -> tuple[int, int]:
-        base_env = self._get_base_env()
-        grid = base_env.grid
-        for x in range(grid.width):
-            for y in range(grid.height):
-                obj = grid.get(x, y)
-                if obj is not None and obj.type == "goal":
-                    return (x, y)
-        raise RuntimeError("Goal not found in grid")
+        raise RuntimeError(goal + " not found in the grid")
 
     def _bfs_distance(
         self,
@@ -458,4 +440,4 @@ class DoorKeyRewardSystem(gym.Wrapper):
             Stage.GOAL_REACHED: 3,
         }[stage]
 
-        return stage_index + stage_progress
+        return (stage_index + stage_progress) / 4

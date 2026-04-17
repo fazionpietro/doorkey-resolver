@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import random
 import sys
 from pathlib import Path
 
@@ -18,9 +19,10 @@ from env.factory import make_env
 from env.rewardsystem import RewardConfig
 from env import doorkey_events as doorev
 
+SEED = 42
+
 
 class StateEncoder:
-    """Codifica lo stato in base al target dello Stage e aggiunge un radar locale per i muri"""
 
     def encode(self, env, info):
         base = env.unwrapped
@@ -28,46 +30,34 @@ class StateEncoder:
         d = base.agent_dir
 
         stage = env.get_wrapper_attr("curr_stage")
+        curr_progress = env.curr_progress
+        progress_bin = int(curr_progress * (10 - 1))
+
         stage_name = stage.value if stage is not None else "no_key"
 
         if stage_name == "no_key":
             target_pos = env.get_wrapper_attr("key_pos")
             tx, ty = target_pos if target_pos is not None else (ax, ay)
+
         elif stage_name == "has_key":
             target_pos = env.get_wrapper_attr("door_pos")
             tx, ty = target_pos if target_pos is not None else (ax, ay)
+
         elif stage_name == "door_open":
             target_pos = env.get_wrapper_attr("goal_pos")
             tx, ty = target_pos if target_pos is not None else (ax, ay)
+
         else:
             tx, ty = ax, ay
 
         dx = tx - ax
         dy = ty - ay
 
+        # Mappiamo lo stage in un intero
         stage_map = {"no_key": 0, "has_key": 1, "door_open": 2, "goal_reached": 3}
         stage_idx = stage_map.get(stage_name, 0)
 
-        dirs = [(1, 0), (0, 1), (-1, 0), (0, -1)]
-        fwd_vec = dirs[d]
-        left_vec = dirs[(d - 1) % 4]
-        right_vec = dirs[(d + 1) % 4]
-
-        def is_wall(dx_vec, dy_vec):
-            nx, ny = ax + dx_vec, ay + dy_vec
-            # Controlliamo che le coordinate non escano dalla griglia
-            if 0 <= nx < base.width and 0 <= ny < base.height:
-                cell = base.grid.get(nx, ny)
-                # Consideriamo ostacolo solo i muri veri e propri (non le porte chiuse)
-                return 1 if cell is not None and cell.type == "wall" else 0
-            return 1  # I bordi del livello sono considerati muri
-
-        wall_front = is_wall(*fwd_vec)
-        wall_left = is_wall(*left_vec)
-        wall_right = is_wall(*right_vec)
-
-        # 3. LO STATO FINALE DIVENTA PIÙ RICCO
-        return (dx, dy, d, stage_idx, wall_front, wall_left, wall_right)
+        return (dx, dy, d, progress_bin, stage_idx)
 
 
 class QLearningAgent:
@@ -88,8 +78,8 @@ class QLearningAgent:
         self.epsilon_decay = epsilon_decay
         self.q = defaultdict(lambda: np.zeros(n_actions, dtype=np.float32))
 
-    def act(self, state, greedy=False):
-        if not greedy and np.random.rand() < self.epsilon:
+    def act(self, state):
+        if np.random.rand() < self.epsilon:
             return np.random.randint(self.n_actions)
 
         q_values = self.q[state]
@@ -105,7 +95,6 @@ class QLearningAgent:
         self.q[s][a] += self.alpha * td_error
 
     def decay_epsilon(self):
-
         self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
 
 
@@ -121,7 +110,12 @@ class Trainer:
         success_buffer = deque(maxlen=100)
 
         for ep in range(episodes):
-            obs, info = self.env.reset()
+
+            if ep == 0:
+                obs, info = self.env.reset(seed=SEED)
+            else:
+                obs, info = self.env.reset()
+
             state = self.encoder.encode(self.env, info)
             ep_reward = 0.0
             info_next = info
@@ -198,7 +192,7 @@ class Trainer:
             info_next = info
 
             for _ in range(max_steps):
-                action = self.agent.act(state, greedy=True)
+                action = self.agent.act(state)
                 obs, reward, terminated, truncated, info_next = self.env.step(action)
                 state = self.encoder.encode(self.env, info_next)
                 ep_reward += reward
@@ -224,7 +218,6 @@ class Trainer:
 
 def train_sweep():
     """Questa è la funzione che WandB chiamerà per ogni run dello sweep"""
-    # Inizializza la run di wandb (leggerà la configurazione fornita dall'agent)
     wandb.init()
     config = wandb.config
 
@@ -247,14 +240,10 @@ def train_sweep():
     )
     trainer = Trainer(env, agent, encoder)
 
-    # Addestramento
-    # Usiamo meno episodi per lo sweep per velocizzare, es. 3000 invece di 5000
     trainer.train(episodes=3000, log_every=500)
 
-    # Valutazione finale (questa è la metrica che WandB cercherà di massimizzare)
     eval_reward, eval_success = trainer.evaluate(episodes=50)
 
-    # WandB logga già in Trainer.evaluate(), ma lo assicuriamo per l'ottimizzatore Bayesiano
     wandb.log({"sweep/final_success_rate": eval_success})
 
     print(f"Run conclusa. Success Rate: {eval_success*100:.1f}%")
@@ -340,11 +329,8 @@ def main():
     print(f"Evaluation success rate: {eval_success*100:.1f}%")
 
     env.close()
-    wandb.finish()  # Chiude la connessione con WandB
+    wandb.finish()
 
-    # ==========================================
-    # TEST VISIVO FINALE (ANIMAZIONE)
-    # ==========================================
     print("\n" + "=" * 40)
     print("Avvio test visivo dell'agente addestrato!")
     print("=" * 40)
@@ -356,6 +342,7 @@ def main():
         obs, info = env_vis.reset()
         state = encoder.encode(env_vis, info)
         done = False
+        rewards = 0
 
         print(f"Episodio visivo {ep + 1}/{test_episodes} in corso...")
 
@@ -363,11 +350,12 @@ def main():
         step_num = 0
 
         while not done and step_num < 300:
-            action = agent.act(state, greedy=True)
+            action = agent.act(state)
             obs, reward, terminated, truncated, info = env_vis.step(action)
             state = encoder.encode(env_vis, info)
             done = terminated or truncated
             step_num += 1
+            rewards += reward
 
             # --- Progresso per stage ---
             curr_stage = info.get("stage", "?")
@@ -385,7 +373,7 @@ def main():
             filled = int(curr_progress * bar_len)
             bar = "█" * filled + "░" * (bar_len - filled)
             print(
-                f"  step {step_num:3d} | Stage: {label:35s} "
+                f"  step {step_num:3d} | reward: {rewards:3f} | Stage: {label:35s} "
                 f"| Progresso stage: [{bar}] {curr_progress*100:5.1f}% "
                 f"| Completamento: {completion*100:5.1f}%"
             )
