@@ -181,7 +181,7 @@ class Trainer:
 
         return rewards, avg_rewards
 
-    def evaluate(self, episodes=50, max_steps=300):
+    def evaluate(self, episodes=100, max_steps=300):
         rewards = []
         successes = 0
 
@@ -222,7 +222,7 @@ def train_sweep():
     config = wandb.config
 
     print(
-        f"Avvio run con: alpha={config.alpha:.3f}, gamma={config.gamma:.3f}, eps_decay={config.eps_decay:.4f}"
+        f"Avvio run c eon: alpha={config.alpha:.3f}, gamma={config.gamma:.3f}, eps_decay={config.eps_decay:.4f}"
     )
 
     # Creazione ambiente

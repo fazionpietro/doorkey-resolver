@@ -1,29 +1,24 @@
 #!/usr/bin/env python3
-from random import seed
 import sys
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
+from random import seed
 import time
 from collections import defaultdict, deque
 import argparse
-import math
 import numpy as np
 import gymnasium as gym
-import matplotlib.pyplot as plt
 from typing import cast
 from gymnasium.spaces import Discrete
-import wandb
 
+# Mock imports - Assicurati che questi percorsi siano corretti nel tuo progetto
+sys.path.insert(0, str(Path(__file__).parent.parent))
 from env.factory import make_env
 from env.rewardsystem import RewardConfig
-from env import doorkey_events as doorev
 
 SEED = 42
 
 
 class StateEncoder:
-
     def encode(self, env, info):
         base = env.unwrapped
         ax, ay = base.agent_pos
@@ -31,29 +26,22 @@ class StateEncoder:
 
         stage = env.get_wrapper_attr("curr_stage")
         curr_progress = env.curr_progress
-        progress_bin = int(curr_progress * (10 - 1))
+        progress_bin = int(curr_progress * 9)
 
         stage_name = stage.value if stage is not None else "no_key"
 
         if stage_name == "no_key":
             target_pos = env.get_wrapper_attr("key_pos")
-            tx, ty = target_pos if target_pos is not None else (ax, ay)
-
         elif stage_name == "has_key":
             target_pos = env.get_wrapper_attr("door_pos")
-            tx, ty = target_pos if target_pos is not None else (ax, ay)
-
         elif stage_name == "door_open":
             target_pos = env.get_wrapper_attr("goal_pos")
-            tx, ty = target_pos if target_pos is not None else (ax, ay)
-
         else:
-            tx, ty = ax, ay
+            target_pos = None
 
-        dx = tx - ax
-        dy = ty - ay
+        tx, ty = target_pos if target_pos is not None else (ax, ay)
+        dx, dy = tx - ax, ty - ay
 
-        # Mappiamo lo stage in un intero
         stage_map = {"no_key": 0, "has_key": 1, "door_open": 2, "goal_reached": 3}
         stage_idx = stage_map.get(stage_name, 0)
 
@@ -68,7 +56,7 @@ class QLearningAgent:
         gamma=0.99,
         epsilon=1.0,
         epsilon_min=0.05,
-        epsilon_decay=0.995,  # Cambiato a decadimento esponenziale standard per convergere prima
+        epsilon_decay=0.995,
     ):
         self.n_actions = n_actions
         self.alpha = alpha
@@ -86,11 +74,9 @@ class QLearningAgent:
     def update(self, s, a, r, s_next, done):
         best_next = 0.0 if done else np.max(self.q[s_next])
         td_target = r + self.gamma * best_next
-        td_error = td_target - self.q[s][a]
-        self.q[s][a] += self.alpha * td_error
+        self.q[s][a] += self.alpha * (td_target - self.q[s][a])
 
     def decay_epsilon(self):
-
         self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
 
 
@@ -102,15 +88,17 @@ class Trainer:
 
     def train(self, episodes=5000, max_steps=300, log_every=100):
         rewards = []
-        avg_rewards = []
-        success_buffer = deque(maxlen=100)  # Finestra mobile per il success rate
+        success_buffer = deque(maxlen=100)
 
         for ep in range(episodes):
-            obs, info = self.env.reset(seed=SEED)
+
+            if ep == 0:
+                obs, info = self.env.reset(seed=SEED)
+            else:
+                obs, info = self.env.reset()
             state = self.encoder.encode(self.env, info)
             ep_reward = 0.0
-            info_next = info
-            steps_taken = 0
+            info_last = info
 
             for step in range(max_steps):
                 action = self.agent.act(state)
@@ -124,238 +112,96 @@ class Trainer:
 
                 state = next_state
                 ep_reward += reward
-                steps_taken += 1
-
+                info_last = info_next
                 if done:
                     break
 
             self.agent.decay_epsilon()
             rewards.append(ep_reward)
 
-            # Estrazione metriche per W&B
-            final_stage = info_next.get("stage", "unknown")
+            final_stage = info_last.get("stage", "unknown")
             if hasattr(final_stage, "value"):
                 final_stage = final_stage.value
 
             is_success = 1 if final_stage == "goal_reached" else 0
             success_buffer.append(is_success)
-            current_success_rate = np.mean(success_buffer)
-
-            stage_map = {
-                "no_key": 0,
-                "has_key": 1,
-                "door_open": 2,
-                "goal_reached": 3,
-                "unknown": -1,
-            }
-
-            # Logging su WandB ad ogni episodio
-            wandb.log(
-                {
-                    "train/episode": ep,
-                    "train/reward": ep_reward,
-                    "train/steps": steps_taken,
-                    "train/epsilon": self.agent.epsilon,
-                    "train/success": is_success,
-                    "train/success_rate_100ep": current_success_rate,
-                    "train/final_stage_idx": stage_map.get(final_stage, -1),
-                }
-            )
 
             if ep % log_every == 0:
                 avg = np.mean(rewards[-log_every:])
-                avg_rewards.append(avg)
+                curr_succ = np.mean(success_buffer)
                 print(
-                    f"Ep {ep:5d}: reward={ep_reward:.2f}, avg_100={avg:.2f}, "
-                    f"succ_rate={current_success_rate:.2f}, ε={self.agent.epsilon:.3f}, stage={final_stage}"
+                    f"Ep {ep:5d} | Reward: {avg:6.2f} | Success: {curr_succ*100:5.1f}% | Eps: {self.agent.epsilon:.3f}"
                 )
 
-        return rewards, avg_rewards
+        return rewards
 
     def evaluate(self, episodes=50, max_steps=300):
-        rewards = []
+        total_rewards = []
         successes = 0
-
         for _ in range(episodes):
             obs, info = self.env.reset()
             state = self.encoder.encode(self.env, info)
             ep_reward = 0.0
-            info_next = info
-
-            for _ in range(max_steps):
+            done = False
+            while not done:
                 action = self.agent.act(state, greedy=True)
-                obs, reward, terminated, truncated, info_next = self.env.step(action)
-                state = self.encoder.encode(self.env, info_next)
+                obs, reward, term, trunc, info = self.env.step(action)
+                state = self.encoder.encode(self.env, info)
                 ep_reward += reward
-                if terminated or truncated:
-                    break
+                done = term or trunc
 
-            rewards.append(ep_reward)
-
-            final_stage = info_next.get("stage", "unknown")
-            if hasattr(final_stage, "value"):
-                final_stage = final_stage.value
-            if final_stage == "goal_reached":
+            total_rewards.append(ep_reward)
+            if info.get("stage") == "goal_reached" or (
+                hasattr(info.get("stage"), "value")
+                and info.get("stage").value == "goal_reached"
+            ):
                 successes += 1
 
-        avg_reward = np.mean(rewards)
-        success_rate = successes / episodes
-
-        # Log evaluation metrics
-        wandb.log({"eval/avg_reward": avg_reward, "eval/success_rate": success_rate})
-
-        return avg_reward, success_rate
-
-
-def train_sweep():
-    """Questa è la funzione che WandB chiamerà per ogni run dello sweep"""
-    # Inizializza la run di wandb (leggerà la configurazione fornita dall'agent)
-    wandb.init()
-    config = wandb.config
-
-    print(
-        f"Avvio run con: alpha={config.alpha:.3f}, gamma={config.gamma:.3f}, eps_decay={config.eps_decay:.4f}"
-    )
-
-    # Creazione ambiente
-    cfg_env = RewardConfig()
-    env = make_env(reward_config=cfg_env)
-    n_actions = int(cast(Discrete, env.action_space).n)
-
-    # Inizializza le componenti con i parametri dello SWEEP
-    encoder = StateEncoder()
-    agent = QLearningAgent(
-        n_actions=n_actions,
-        alpha=config.alpha,
-        gamma=config.gamma,
-        epsilon_decay=config.eps_decay,
-    )
-    trainer = Trainer(env, agent, encoder)
-
-    # Addestramento
-    # Usiamo meno episodi per lo sweep per velocizzare, es. 3000 invece di 5000
-    trainer.train(episodes=3000, log_every=500)
-
-    # Valutazione finale (questa è la metrica che WandB cercherà di massimizzare)
-    eval_reward, eval_success = trainer.evaluate(episodes=50)
-
-    # WandB logga già in Trainer.evaluate(), ma lo assicuriamo per l'ottimizzatore Bayesiano
-    wandb.log({"sweep/final_success_rate": eval_success})
-
-    print(f"Run conclusa. Success Rate: {eval_success*100:.1f}%")
-    env.close()
+        return np.mean(total_rewards), successes / episodes
 
 
 def main():
     parser = argparse.ArgumentParser()
-    # Qui puoi definire i parametri di default per la singola run
     parser.add_argument("--episodes", type=int, default=5000)
     parser.add_argument("--alpha", type=float, default=0.15)
     parser.add_argument("--gamma", type=float, default=0.99)
     parser.add_argument("--eps_decay", type=float, default=0.995)
-    parser.add_argument("--project_name", type=str, default="doorkey-qlearning")
     args = parser.parse_args()
 
-    # Inizializza Weights & Biases per una RUN SINGOLA (niente Sweep)
-    wandb.init(
-        project=args.project_name,
-        name=f"Run_ep{args.episodes}_alpha{args.alpha}",  # Dà un nome carino alla run su WandB
-        config={
-            "episodes": args.episodes,
-            "learning_rate": args.alpha,
-            "gamma": args.gamma,
-            "epsilon_decay": args.eps_decay,
-            "env_id": "MiniGrid-DoorKey-6x6-v0",
-            "agent_type": "QLearning_RelativeEncoder",
-        },
-    )
+    np.random.seed(SEED)  # Seed globale per riproducibilità
 
-    print(f"Creazione ambiente DoorKey 6x6...")
     cfg = RewardConfig()
     env = make_env(reward_config=cfg)
     n_actions = int(cast(Discrete, env.action_space).n)
 
-    encoder = StateEncoder()
     agent = QLearningAgent(
         n_actions=n_actions,
         alpha=args.alpha,
         gamma=args.gamma,
         epsilon_decay=args.eps_decay,
     )
-    trainer = Trainer(env, agent, encoder)
+    trainer = Trainer(env, agent, StateEncoder())
 
-    print(f"Training avviato per {args.episodes} episodi...")
-    rewards, avg_rewards = trainer.train(episodes=args.episodes)
+    print(f"--- Inizio Training ({args.episodes} episodi) ---")
+    trainer.train(episodes=args.episodes)
 
-    print("Valutazione...")
-    eval_reward, eval_success = trainer.evaluate()
-    print(f"Evaluation reward medio: {eval_reward:.2f}")
-    print(f"Evaluation success rate: {eval_success*100:.1f}%")
-
+    print("\n--- Valutazione Finale ---")
+    avg_r, succ_r = trainer.evaluate()
+    print(f"Reward medio: {avg_r:.2f} | Success Rate: {succ_r*100:.1f}%")
     env.close()
-    wandb.finish()  # Chiude la connessione con WandB
 
-    # ==========================================
-    # TEST VISIVO FINALE (ANIMAZIONE)
-    # ==========================================
-    print("\n" + "=" * 40)
-    print("Avvio test visivo dell'agente addestrato!")
-    print("=" * 40)
-
+    # Test visivo
+    print("\nAvvio test visivo (3 episodi)...")
     env_vis = make_env(render_mode="human", reward_config=cfg)
-    test_episodes = 3
-
-    for ep in range(test_episodes):
+    for ep in range(3):
         obs, info = env_vis.reset()
-        state = encoder.encode(env_vis, info)
         done = False
-
-        print(f"Episodio visivo {ep + 1}/{test_episodes} in corso...")
-
-        prev_stage = None
-        step_num = 0
-
         while not done:
+            state = StateEncoder().encode(env_vis, info)
             action = agent.act(state, greedy=True)
-            obs, reward, terminated, truncated, info = env_vis.step(action)
-            state = encoder.encode(env_vis, info)
-            done = terminated or truncated
-            step_num += 1
-
-            # --- Progresso per stage ---
-            curr_stage = info.get("stage", "?")
-            completion = info.get("completion", 0.0)  # 0.0–1.0 globale
-            curr_progress = env_vis.get_wrapper_attr(
-                "curr_progress"
-            )  # 0.0–1.0 nello stage corrente
-
-            stage_labels = {
-                "no_key": "1/4 - Raccogli la chiave",
-                "has_key": "2/4 - Apri la porta",
-                "door_open": "3/4 - Raggiungi il goal",
-                "goal_reached": "4/4 - Goal raggiunto!  ✓",
-            }
-            label = stage_labels.get(curr_stage, curr_stage)
-
-            # Stampa solo quando lo stage cambia o ogni 10 step (per non intasare il terminale)
-            if curr_stage != prev_stage or step_num % 10 == 0:
-                bar_len = 20
-                filled = int(curr_progress * bar_len)
-                bar = "█" * filled + "░" * (bar_len - filled)
-                print(
-                    f"  step {step_num:3d} | Stage: {label:35s} "
-                    f"| Progresso stage: [{bar}] {curr_progress*100:5.1f}% "
-                    f"| Completamento: {completion*100:5.1f}%"
-                )
-                prev_stage = curr_stage
-
-            time.sleep(0.15)
-
-        print(
-            f"  → Episodio terminato in {step_num} step. Stage finale: {info.get('stage', '?')}\n"
-        )
-        time.sleep(1.0)
-
+            obs, reward, term, trunc, info = env_vis.step(action)
+            done = term or trunc
+            time.sleep(0.1)
     env_vis.close()
 
 
