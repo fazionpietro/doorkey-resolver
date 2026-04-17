@@ -95,7 +95,7 @@ class DoorKeyProgressReward(gym.Wrapper):
         self._d_key_door = self._bfs(self._key_pos, self._door_pos, ignore_door=True)
         self._d_door_goal = self._bfs(self._door_pos, self._goal_pos, ignore_door=True)
         d_start_key = self._bfs(start, self._key_pos, ignore_door=False)
-        self._d_total = max(d_start_key + self._d_key_door + self._d_door_goal, 1)
+        self._d_total = max(d_start_key + self._d_key_door + self._d_door_goal + 2, 1)
 
         self._prev_phi = self._phi()
         return obs, info
@@ -121,9 +121,10 @@ class DoorKeyProgressReward(gym.Wrapper):
                 self._bfs(agent, self._key_pos, ignore_door=False)
                 + self._d_key_door
                 + self._d_door_goal
+                + 2
             )
         elif has_key and not door_open:
-            d_rem = self._bfs(agent, self._door_pos, ignore_door=True) + self._d_door_goal
+            d_rem = self._bfs(agent, self._door_pos, ignore_door=True) + self._d_door_goal + 1
         else:
             d_rem = self._bfs(agent, self._goal_pos, ignore_door=True)
 
