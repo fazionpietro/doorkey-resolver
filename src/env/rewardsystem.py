@@ -432,7 +432,7 @@ class DoorKeyRewardSystem(gym.Wrapper):
         return min(1.0, (stage_index + self.curr_progress) / n_stages)
 
     def _compute_stage_potential(self, stage: Stage, stage_progress: float) -> float:
-        """Trasforma il progresso locale in un potenziale globale da 0.0 a 4.0"""
+        """Trasforma il progresso locale in un potenziale globale"""
         stage_index = {
             Stage.NO_KEY: 0,
             Stage.HAS_KEY: 1,
