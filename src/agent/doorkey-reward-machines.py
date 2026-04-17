@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from random import seed
 import sys
 from pathlib import Path
 
@@ -18,9 +19,10 @@ from env.factory import make_env
 from env.rewardsystem import RewardConfig
 from env import doorkey_events as doorev
 
+SEED = 42
+
 
 class StateEncoder:
-    """Codifica lo stato in base al target dello Stage e aggiunge un radar locale per i muri"""
 
     def encode(self, env, info):
         base = env.unwrapped
@@ -28,46 +30,34 @@ class StateEncoder:
         d = base.agent_dir
 
         stage = env.get_wrapper_attr("curr_stage")
+        curr_progress = env.curr_progress
+        progress_bin = int(curr_progress * (10 - 1))
+
         stage_name = stage.value if stage is not None else "no_key"
 
         if stage_name == "no_key":
             target_pos = env.get_wrapper_attr("key_pos")
             tx, ty = target_pos if target_pos is not None else (ax, ay)
+
         elif stage_name == "has_key":
             target_pos = env.get_wrapper_attr("door_pos")
             tx, ty = target_pos if target_pos is not None else (ax, ay)
+
         elif stage_name == "door_open":
             target_pos = env.get_wrapper_attr("goal_pos")
             tx, ty = target_pos if target_pos is not None else (ax, ay)
+
         else:
             tx, ty = ax, ay
 
         dx = tx - ax
         dy = ty - ay
 
+        # Mappiamo lo stage in un intero
         stage_map = {"no_key": 0, "has_key": 1, "door_open": 2, "goal_reached": 3}
         stage_idx = stage_map.get(stage_name, 0)
 
-        dirs = [(1, 0), (0, 1), (-1, 0), (0, -1)]
-        fwd_vec = dirs[d]
-        left_vec = dirs[(d - 1) % 4]
-        right_vec = dirs[(d + 1) % 4]
-
-        def is_wall(dx_vec, dy_vec):
-            nx, ny = ax + dx_vec, ay + dy_vec
-            # Controlliamo che le coordinate non escano dalla griglia
-            if 0 <= nx < base.width and 0 <= ny < base.height:
-                cell = base.grid.get(nx, ny)
-                # Consideriamo ostacolo solo i muri veri e propri (non le porte chiuse)
-                return 1 if cell is not None and cell.type == "wall" else 0
-            return 1  # I bordi del livello sono considerati muri
-
-        wall_front = is_wall(*fwd_vec)
-        wall_left = is_wall(*left_vec)
-        wall_right = is_wall(*right_vec)
-
-        # 3. LO STATO FINALE DIVENTA PIÙ RICCO
-        return (dx, dy, d, stage_idx, wall_front, wall_left, wall_right)
+        return (dx, dy, d, progress_bin, stage_idx)
 
 
 class QLearningAgent:
@@ -116,7 +106,7 @@ class Trainer:
         success_buffer = deque(maxlen=100)  # Finestra mobile per il success rate
 
         for ep in range(episodes):
-            obs, info = self.env.reset()
+            obs, info = self.env.reset(seed=SEED)
             state = self.encoder.encode(self.env, info)
             ep_reward = 0.0
             info_next = info
