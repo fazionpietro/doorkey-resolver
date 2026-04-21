@@ -7,18 +7,18 @@ import argparse
 import random
 import numpy as np
 import gymnasium as gym
-from typing import cast, overload
+from typing import cast
 from gymnasium.spaces import Discrete
 import wandb
-from typing import overload
 
-# Import di PyTorch per il Deep Learning
+
+# Import di PyTorch
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 
-# Import dei Wrapper di MiniGrid per la visione
+# Import dei Wrapper di MiniGrid
 from minigrid.wrappers import FullyObsWrapper, ImgObsWrapper
 
 # Mock imports - Assicurati che questi percorsi siano corretti nel tuo progetto
@@ -26,125 +26,129 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from env.factory import make_env
 from env.rewardsystem import RewardConfig
 
+# Importa il buffer (Assicurati di avere il file ExperienceReplayBuffer.py nella stessa cartella)
+from ExperienceReplayBuffer import ExperienceReplayBuffer, Experience
 
-# ─────────────────────────────────────────────
-# QNetwork: Rete Neurale standard (MLP)
-# ─────────────────────────────────────────────
+# Usa la GPU se disponibile, altrimenti CPU
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
 class QNetwork(nn.Module):
-    def __init__(self, state_dim, n_actions):
+    """Modello (Policy) che mappa gli stati alle azioni."""
+    def __init__(self, state_size, action_size, seed, fc1_units=64, hidden_units=128, fc2_units=64):
         super(QNetwork, self).__init__()
-        self.fc1 = nn.Linear(state_dim, 256)
-        self.fc2 = nn.Linear(256, 256)
-        self.fc3 = nn.Linear(256, 128)
-        self.out = nn.Linear(128, n_actions)
+        self.seed = torch.manual_seed(seed)
+        self.fc1 = nn.Linear(state_size, fc1_units)
+        self.h1 = nn.Linear(fc1_units, hidden_units)
+        self.h2 = nn.Linear(hidden_units, fc2_units)
+        self.fc2 = nn.Linear(fc2_units, action_size)
 
-    def forward(self, x):
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = F.relu(self.fc3(x))
-        return self.out(x)
+    def forward(self, state):
+        x = F.relu(self.fc1(state))
+        x = F.relu(self.h1(x))
+        x = F.relu(self.h2(x))
+        return self.fc2(x)
 
-
-# ─────────────────────────────────────────────
-# DDQNAgent: Agente Double Deep Q-Network
-# ─────────────────────────────────────────────
-class DDQNAgent:
-    def __init__(
-        self,
-        state_dim,
-        n_actions,
-        lr=1e-3,
-        gamma=0.99,
-        epsilon=1.0,
-        epsilon_decay=0.995,
-        epsilon_min=0.01,
-        reward_threshold = 0.0,
-        reward_increment= 0.3
-    ):
-        self.state_dim = state_dim
-        self.n_actions = n_actions
+class DDQNAgent():
+    def __init__(self, state_size, action_size, seed, buffer_size, batch_size, 
+                 gamma=0.99, tau=1e-3, lr=5e-4, update_every=4, alpha=0.6,
+                 eps_start=1.0, eps_min=0.01, eps_decay=0.995):
+        """Inizializza un oggetto DDQNAgent."""
+        self.state_size = state_size
+        self.action_size = action_size
+        self.seed = random.seed(seed)
         self.gamma = gamma
-        self.epsilon = epsilon
-        self.epsilon_decay = epsilon_decay
-        self.epsilon_min = epsilon_min
-        self.lr = lr
+        self.tau = tau
+        self.update_every = update_every
+        self.batch_size = batch_size
+        
+        # Gestione Epsilon
+        self.epsilon = eps_start
+        self.epsilon_min = eps_min
+        self.epsilon_decay = eps_decay
+        
+        # Q-Network (Local e Target)
+        self.qnetwork_local = QNetwork(state_size, action_size, seed).to(device)
+        self.qnetwork_target = QNetwork(state_size, action_size, seed).to(device)
+        self.optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=lr)
 
-        self.reward_threshold = reward_threshold
-        self.reward_increment = reward_increment
-        self.epsilon_delta = (self.epsilon - self.epsilon_min)/300
+        # Inizializza il Prioritized Experience Replay Buffer
+        random_state = np.random.RandomState(seed)
+        self.memory = ExperienceReplayBuffer(batch_size, buffer_size, alpha, random_state)
+        
+        self.t_step = 0
 
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    def step(self, state, action, reward, next_state, done, beta):
+        # 1. Salva l'esperienza nel buffer
+        exp = Experience(state, action, reward, next_state, done)
+        self.memory.add(exp)
+        
+        loss = 0.0
+        # 2. Impara ogni UPDATE_EVERY time steps
+        self.t_step = (self.t_step + 1) % self.update_every
+        if self.t_step == 0:
+            if len(self.memory) > self.batch_size:
+                experiences = self.memory.sample(beta)
+                loss = self.learn(experiences)
+        return loss
 
-        self.online_net = QNetwork(state_dim, n_actions).to(self.device)
-        self.target_net = QNetwork(state_dim, n_actions).to(self.device)
-
-        self.target_net.load_state_dict(self.online_net.state_dict())
-        self.target_net.eval()
-
-        self.optimizer = optim.Adam(self.online_net.parameters(), lr=lr)
-        self.loss_fn = nn.MSELoss()
-
-    def act(self, state):
-        """Sceglie un'azione usando una policy epsilon-greedy"""
-        if random.random() < self.epsilon:
-            return random.randint(0, self.n_actions - 1)
-
-        state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
+    def act(self, state, eps=None):
+        """Restituisce l'azione dato lo stato corrente seguendo una policy epsilon-greedy."""
+        eps = eps if eps is not None else self.epsilon
+        state = torch.from_numpy(state).float().unsqueeze(0).to(device)
+        
+        self.qnetwork_local.eval()
         with torch.no_grad():
-            q_values = self.online_net(state_tensor)
-        return torch.argmax(q_values).item()
+            action_values = self.qnetwork_local(state)
+        self.qnetwork_local.train()
 
-    def train(self, state, action, reward, next_state, done):
-        """Addestra la rete su una singola transizione (Niente Replay Buffer)"""
-        state_t = torch.FloatTensor(state).unsqueeze(0).to(self.device)
-        next_state_t = torch.FloatTensor(next_state).unsqueeze(0).to(self.device)
-        action_t = torch.tensor([action]).to(self.device)
-        reward_t = torch.tensor([reward], dtype=torch.float32).to(self.device)
-        done_t = torch.tensor([float(done)], dtype=torch.float32).to(self.device)
+        if random.random() > eps:
+            return np.argmax(action_values.cpu().data.numpy())
+        else:
+            return random.choice(np.arange(self.action_size))
 
-        # FASE 1: Calcolo del Q-value corrente
-        q_values = self.online_net(state_t)
-        current_q = q_values.gather(1, action_t.unsqueeze(1)).squeeze(1)
+    def learn(self, experiences):
+        """Aggiorna i parametri della rete usando un batch di esperienze."""
+        idxs, exps, is_weights = experiences
+        
+        states = torch.from_numpy(np.vstack([e.state for e in exps if e is not None])).float().to(device)
+        actions = torch.from_numpy(np.vstack([e.action for e in exps if e is not None])).long().to(device)
+        rewards = torch.from_numpy(np.vstack([e.reward for e in exps if e is not None])).float().to(device)
+        next_states = torch.from_numpy(np.vstack([e.next_state for e in exps if e is not None])).float().to(device)
+        dones = torch.from_numpy(np.vstack([e.done for e in exps if e is not None]).astype(np.uint8)).float().to(device)
+        is_weights = torch.from_numpy(is_weights).float().to(device)
 
-        # FASE 2: Calcolo del Target DDQN
-        with torch.no_grad():
-            next_action = self.online_net(next_state_t).argmax(1, keepdim=True)
-            next_q_values = self.target_net(next_state_t)
-            next_q = next_q_values.gather(1, next_action).squeeze(1)
-            target_q = reward_t + (1 - done_t) * self.gamma * next_q
+        # LOGICA DOUBLE DQN
+        best_actions = self.qnetwork_local(next_states).max(1)[1].unsqueeze(1)
+        Q_targets_next = self.qnetwork_target(next_states).detach().gather(1, best_actions)
+        Q_targets = rewards + (self.gamma * Q_targets_next * (1 - dones))
 
-        # FASE 3: Ottimizzazione
-        loss = self.loss_fn(current_q, target_q)
+        Q_expected = self.qnetwork_local(states).gather(1, actions)
+
+        # PRIORITIZED EXPERIENCE REPLAY
+        td_errors = torch.abs(Q_targets - Q_expected).detach().cpu().numpy()
+        new_priorities = td_errors.flatten() + 1e-5 
+        self.memory.update_priorities(idxs, new_priorities)
+
+        loss = (is_weights * F.mse_loss(Q_expected, Q_targets, reduction='none')).mean()
 
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
 
+        # AGGIORNAMENTO RETE TARGET
+        self.soft_update(self.qnetwork_local, self.qnetwork_target, self.tau)
+        
         return loss.item()
 
-    def update_target_network(self):
-        """Aggiorna i pesi della Target Network copiando quelli della Online Network"""
-        self.target_net.load_state_dict(self.online_net.state_dict())
+    def soft_update(self, local_model, target_model, tau):
+        for target_param, local_param in zip(target_model.parameters(), local_model.parameters()):
+            target_param.data.copy_(tau*local_param.data + (1.0-tau)*target_param.data)
 
-    def decay_epsilon(self, current_reward=None):
-        """
-        Riduce l'esplorazione (epsilon). 
-        Se current_reward è fornito, usa il decadimento basato sulle soglie.
-        Altrimenti, usa il decadimento classico temporale.
-        """
-        # 1. Logica Reward-Based (se passi il premio)
-        if current_reward is not None:
-            if self.epsilon > self.epsilon_min and current_reward >= self.reward_threshold:
-                self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
-                self.reward_threshold += self.reward_increment
-                return True
-            return False
-            
-        # 2. Logica Classica (se chiami il metodo vuoto)
-        else:
-            self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
-            return True
-    
+    def decay_epsilon(self):
+        """Riduce il valore di epsilon."""
+        self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
+
+
 # ─────────────────────────────────────────────
 # Encoder Visivo
 # ─────────────────────────────────────────────
@@ -154,30 +158,34 @@ class FullVisionEncoder:
 
     def encode(self, obs):
         """Appiattisce la matrice 3D e normalizza i valori dividendo per 10.0"""
-        flat_obs = obs.flatten() / 10.0
-        return flat_obs
+        return obs.flatten() / 10.0
 
 
 # ─────────────────────────────────────────────
 # Trainer
 # ─────────────────────────────────────────────
 class TrainerDDQN:
-    def __init__(self, env, agent, encoder, update_target_every=500):
+    def __init__(self, env, agent, encoder):
         self.env = env
         self.agent = agent
         self.encoder = encoder
-        self.update_target_every = update_target_every
         self.total_steps = 0
 
     def train(self, episodes=10000, max_steps=300, log_every=100):
         rewards = []
         avg_rewards = []
         success_buffer = deque(maxlen=100)
+        
+        # Variabili per calcolare il beta (aumenta da 0.4 a 1.0 nel tempo)
+        beta_start = 0.4
+        reward = 0.0
 
         for ep in range(episodes):
             obs, info = self.env.reset()
             state = self.encoder.encode(obs)
-            reward = 0
+            
+            # Calcolo di Beta per il PER in questo episodio
+            beta = min(1.0, beta_start + ep * (1.0 - beta_start) / episodes)
 
             ep_reward = 0.0
             ep_loss = 0.0
@@ -186,20 +194,15 @@ class TrainerDDQN:
 
             for step in range(max_steps):
                 action = self.agent.act(state)
-
-                obs_next, reward, terminated, truncated, info_next = self.env.step(
-                    action
-                )
+                obs_next, reward, terminated, truncated, info_next = self.env.step(action)
                 done = terminated or truncated
                 next_state = self.encoder.encode(obs_next)
 
-                loss = self.agent.train(state, action, reward, next_state, done)
+                # Step dell'agente: salva nel buffer e impara
+                loss = self.agent.step(state, action, reward, next_state, done, beta)
                 ep_loss += loss
 
                 self.total_steps += 1
-                if self.total_steps % self.update_target_every == 0:
-                    self.agent.update_target_network()
-
                 state = next_state
                 ep_reward += reward
                 steps_taken += 1
@@ -207,8 +210,7 @@ class TrainerDDQN:
                 if done:
                     break
 
-            #self.agent.decay_epsilon()
-            has_decayed = self.agent.decay_epsilon(ep_reward)
+            self.agent.decay_epsilon()
             rewards.append(ep_reward)
 
             final_stage = info_next.get("stage", "unknown")
@@ -217,28 +219,20 @@ class TrainerDDQN:
 
             is_success = 1 if final_stage == "goal_reached" or reward > 0 else 0
             success_buffer.append(is_success)
-            current_success_rate = (
-                np.mean(success_buffer) if len(success_buffer) > 0 else 0
-            )
+            current_success_rate = np.mean(success_buffer) if len(success_buffer) > 0 else 0
 
-            wandb.log(
-                {
-                    "train/episode": ep,
-                    "train/reward": ep_reward,
-                    "train/steps": steps_taken,
-                    "train/epsilon": self.agent.epsilon,
-                    "train/success": is_success,
-                    "train/success_rate_100ep": current_success_rate,
-                    "train/avg_loss": ep_loss / steps_taken if steps_taken > 0 else 0,
-                }
-            )
+            wandb.log({
+                "train/episode": ep,
+                "train/reward": ep_reward,
+                "train/steps": steps_taken,
+                "train/epsilon": self.agent.epsilon,
+                "train/success": is_success,
+                "train/success_rate_100ep": current_success_rate,
+                "train/avg_loss": ep_loss / steps_taken if steps_taken > 0 else 0,
+            })
 
             if ep % log_every == 0:
-                avg = (
-                    np.mean(rewards[-log_every:])
-                    if len(rewards) >= log_every
-                    else np.mean(rewards)
-                )
+                avg = np.mean(rewards[-log_every:]) if len(rewards) >= log_every else np.mean(rewards)
                 avg_rewards.append(avg)
                 print(
                     f"Ep {ep:5d}: reward={ep_reward:.2f}, avg={avg:.2f}, "
@@ -252,7 +246,6 @@ class TrainerDDQN:
         rewards = []
         successes = 0
 
-        # Salviamo l'epsilon corrente e forziamo la policy ad essere avida (greedy)
         original_epsilon = self.agent.epsilon
         self.agent.epsilon = 0.0
 
@@ -278,15 +271,12 @@ class TrainerDDQN:
             if final_stage == "goal_reached":
                 successes += 1
 
-        # Ripristiniamo l'epsilon originale
         self.agent.epsilon = original_epsilon
 
         avg_reward = np.mean(rewards)
         success_rate = successes / episodes
 
-        # Log evaluation metrics
         wandb.log({"eval/avg_reward": avg_reward, "eval/success_rate": success_rate})
-
         return avg_reward, success_rate
 
 
@@ -294,13 +284,10 @@ class TrainerDDQN:
 # Funzioni Main e Sweep
 # ─────────────────────────────────────────────
 def train_sweep_ddqn():
-    """Funzione chiamata automaticamente dai WandB Agents durante lo sweep"""
     wandb.init()
     config = wandb.config
 
-    print(
-        f"Avvio run sweep: lr={config.lr:.5f}, gamma={config.gamma:.3f}, eps_decay={config.eps_decay:.4f}"
-    )
+    print(f"Avvio run sweep: lr={config.lr:.5f}, gamma={config.gamma:.3f}, eps_decay={config.eps_decay:.4f}")
 
     cfg_env = RewardConfig()
     env = make_env(reward_config=cfg_env)
@@ -314,17 +301,19 @@ def train_sweep_ddqn():
 
     encoder = FullVisionEncoder()
     agent = DDQNAgent(
-        state_dim=state_dim,
-        n_actions=n_actions,
+        state_size=state_dim,
+        action_size=n_actions,
+        seed=42,
+        buffer_size=100000,
+        batch_size=64,
         lr=config.lr,
         gamma=config.gamma,
-        epsilon_decay=config.eps_decay,
+        eps_decay=config.eps_decay,
     )
 
-    trainer = TrainerDDQN(env, agent, encoder, update_target_every=500)
+    trainer = TrainerDDQN(env, agent, encoder)
     trainer.train(episodes=3000, max_steps=300, log_every=500)
 
-    # Valutazione a fine sweep
     eval_reward, eval_success = trainer.evaluate(episodes=50)
     wandb.log({"sweep/final_success_rate": eval_success})
     print(f"Run conclusa. Success Rate (Eval): {eval_success*100:.1f}%")
@@ -334,21 +323,13 @@ def train_sweep_ddqn():
 
 def main():
     parser = argparse.ArgumentParser(description="DoorKey DDQN Vision con WandB.")
-    parser.add_argument(
-        "--mode",
-        type=str,
-        choices=["train", "sweep"],
-        default="train",
-        help="'train' per singola run, 'sweep' per WandB sweep agent",
-    )
+    parser.add_argument("--mode", type=str, choices=["train", "sweep"], default="train")
     parser.add_argument("--episodes", type=int, default=3000)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--gamma", type=float, default=0.99)
     parser.add_argument("--eps_decay", type=float, default=0.995)
     parser.add_argument("--project_name", type=str, default="doorkey-ddqn-vision")
-    parser.add_argument(
-        "--sweep_count", type=int, default=10, help="Numero di run nello sweep"
-    )
+    parser.add_argument("--sweep_count", type=int, default=10)
 
     args = parser.parse_args()
 
@@ -391,22 +372,23 @@ def main():
             "gamma": args.gamma,
             "epsilon_decay": args.eps_decay,
             "env_id": "MiniGrid-DoorKey-6x6-v0",
-            "agent_type": "DDQN_FullVision_NoBuffer",
+            "agent_type": "DDQN_FullVision_PER",
         },
     )
 
     encoder = FullVisionEncoder()
     agent = DDQNAgent(
-        state_dim=state_dim,
-        n_actions=n_actions,
+        state_size=state_dim,
+        action_size=n_actions,
+        seed=42,
+        buffer_size=100000,
+        batch_size=64,
         lr=args.lr,
         gamma=args.gamma,
-        epsilon_decay=args.eps_decay,
+        eps_decay=args.eps_decay,
     )
 
-    trainer = TrainerDDQN(
-        env=env, agent=agent, encoder=encoder, update_target_every=500
-    )
+    trainer = TrainerDDQN(env=env, agent=agent, encoder=encoder)
 
     print("Training avviato...")
     trainer.train(episodes=args.episodes, log_every=100)
@@ -426,14 +408,11 @@ def main():
     print("Avvio test visivo dell'agente addestrato!")
     print("=" * 40)
 
-    # Dobbiamo applicare i wrapper visivi anche qui per non far crashare l'encoder
     env_vis = make_env(render_mode="human", reward_config=cfg)
     env_vis = FullyObsWrapper(env_vis)
     env_vis = ImgObsWrapper(env_vis)
 
     test_episodes = 10
-
-    # Rendiamo l'agente 100% greedy per il test visivo
     agent.epsilon = 0.0
 
     for ep in range(test_episodes):
@@ -443,7 +422,6 @@ def main():
         rewards = 0.0
 
         print(f"Episodio visivo {ep + 1}/{test_episodes} in corso...")
-
         step_num = 0
 
         while not done and step_num < 300:
@@ -454,13 +432,19 @@ def main():
             step_num += 1
             rewards += float(reward)
 
-            # --- Progresso per stage ---
             curr_stage = info.get("stage", "?")
             if hasattr(curr_stage, "value"):
                 curr_stage = curr_stage.value
 
             completion = info.get("completion", 0.0)
-            curr_progress = env_vis.get_wrapper_attr("curr_progress")
+            
+            # Nota: get_wrapper_attr potrebbe richiedere controlli se il wrapper non è standard,
+            # ma lo lascio come nel tuo script originario
+            try:
+                curr_progress = env_vis.get_wrapper_attr("curr_progress")
+            except AttributeError:
+                curr_progress = 0.0
+                
             stage_labels = {
                 "no_key": "1/4 - Raccogli la chiave",
                 "has_key": "2/4 - Apri la porta",
@@ -480,13 +464,10 @@ def main():
 
             time.sleep(0.15)
 
-        print(
-            f"  → Episodio terminato in {step_num} step. Stage finale: {info.get('stage', '?')}\n"
-        )
+        print(f"  → Episodio terminato in {step_num} step. Stage finale: {info.get('stage', '?')}\n")
         time.sleep(1.0)
 
     env_vis.close()
-
 
 if __name__ == "__main__":
     main()
