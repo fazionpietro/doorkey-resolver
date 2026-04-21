@@ -71,7 +71,7 @@ class DDQNAgent:
 
         self.reward_threshold = reward_threshold
         self.reward_increment = reward_increment
-        self.epsilon_delta = (self.epsilon - self.epsilon_min)/300
+        self.epsilon_delta = (self.epsilon - self.epsilon_min)/10
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -172,7 +172,9 @@ class TrainerDDQN:
     def train(self, episodes=10000, max_steps=300, log_every=100):
         rewards = []
         avg_rewards = []
-        success_buffer = deque(maxlen=100)
+        success_buffer = deque(maxlen=500)
+        
+
 
         for ep in range(episodes):
             obs, info = self.env.reset()
@@ -217,8 +219,12 @@ class TrainerDDQN:
 
             is_success = 1 if final_stage == "goal_reached" or reward > 0 else 0
             success_buffer.append(is_success)
+            
+            last100 = list(success_buffer)[-100:] if ep > 100 else 0
+
+
             current_success_rate = (
-                np.mean(success_buffer) if len(success_buffer) > 0 else 0
+                np.mean(last100) if len(success_buffer) > 0 else 0
             )
 
             wandb.log(
@@ -244,6 +250,13 @@ class TrainerDDQN:
                     f"Ep {ep:5d}: reward={ep_reward:.2f}, avg={avg:.2f}, "
                     f"succ_rate={current_success_rate:.2f}, ε={self.agent.epsilon:.3f}, loss_media={ep_loss/steps_taken:.4f}"
                 )
+
+            if ep > 500:
+                mean = np.mean(success_buffer) if len(success_buffer) > 0 else 0
+                if mean >= 0.90:
+                    break
+
+
 
         return rewards, avg_rewards
 
