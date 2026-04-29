@@ -16,51 +16,43 @@ from gymnasium.spaces import Discrete
 import wandb
 
 from env.factory import make_env
-from env.rewardsystem import RewardConfig
+from env.rewardsystem import RewardConfig, DoorKeyRewardSystem
 from env import doorkey_events as doorev
+from env.VLMDoorkeyWrapper import MoondreamDenseRewardWrapper
 
 SEED = 42
 
+DEFAULT_ENV_ID = "MiniGrid-DoorKey-6x6-v0"
+
 
 class StateEncoder:
+    def encode(self, env, info=None):
+        """
+        Estrae uno stato discreto e hashabile dall'ambiente MiniGrid.
+        """
+        # Accediamo all'ambiente base aggirando i wrapper
+        unwrapped_env = env.unwrapped
 
-    def encode(self, env, info):
-        base = env.unwrapped
-        ax, ay = base.agent_pos
-        d = base.agent_dir
+        # 1. Posizione (x, y) e direzione (0-3) dell'agente
+        agent_pos = unwrapped_env.agent_pos
+        agent_dir = unwrapped_env.agent_dir
 
-        stage = env.get_wrapper_attr("curr_stage")
-        curr_progress = env.curr_progress
-        n_progress_bins = 20
-        progress_bin = min(
-            n_progress_bins - 1, int(curr_progress * (n_progress_bins - 1))
-        )
+        # 2. L'agente ha raccolto la chiave?
+        carrying = unwrapped_env.carrying
+        has_key = getattr(carrying, "type", None) == "key"
 
-        stage_name = stage.value if stage is not None else "no_key"
+        # 3. Qual è lo stato della porta? (Aperta o chiusa)
+        # Cerchiamo la porta nella griglia
+        door_open = False
+        for i in range(unwrapped_env.grid.width):
+            for j in range(unwrapped_env.grid.height):
+                cell = unwrapped_env.grid.get(i, j)
+                if cell is not None and cell.type == "door":
+                    door_open = cell.is_open
+                    break  # In DoorKey c'è tipicamente una sola porta
 
-        if stage_name == "no_key":
-            target_pos = env.get_wrapper_attr("key_pos")
-            tx, ty = target_pos if target_pos is not None else (ax, ay)
-
-        elif stage_name == "has_key":
-            target_pos = env.get_wrapper_attr("door_pos")
-            tx, ty = target_pos if target_pos is not None else (ax, ay)
-
-        elif stage_name == "door_open":
-            target_pos = env.get_wrapper_attr("goal_pos")
-            tx, ty = target_pos if target_pos is not None else (ax, ay)
-
-        else:
-            tx, ty = ax, ay
-
-        dx = tx - ax
-        dy = ty - ay
-
-        # Mappiamo lo stage in un intero
-        stage_map = {"no_key": 0, "has_key": 1, "door_open": 2, "goal_reached": 3}
-        stage_idx = stage_map.get(stage_name, 0)
-
-        return (dx, dy, d, progress_bin, stage_idx)
+        # Restituiamo una tupla che il Q-Learning può usare come chiave del dizionario
+        return (agent_pos[0], agent_pos[1], agent_dir, has_key, door_open)
 
 
 class QLearningAgent:
@@ -79,45 +71,23 @@ class QLearningAgent:
         self.epsilon = epsilon
         self.epsilon_min = epsilon_min
         self.epsilon_decay = epsilon_decay
-        self.q1 = defaultdict(lambda: np.zeros(n_actions, dtype=np.float32))
-        self.q2 = defaultdict(lambda: np.zeros(n_actions, dtype=np.float32))
+        self.q = defaultdict(lambda: np.zeros(n_actions, dtype=np.float32))
 
     def act(self, state):
         if np.random.rand() < self.epsilon:
             return np.random.randint(self.n_actions)
 
-        q_values = self.q1[state] + self.q2[state]
+        q_values = self.q[state]
         max_q = np.max(q_values)
         best_actions = np.flatnonzero(q_values == max_q)
 
         return int(np.random.choice(best_actions))
 
     def update(self, s, a, r, s_next, done):
-        if np.random.rand() < 0.5:
-            # --- AGGIORNIAMO Q1 ---
-            if done:
-                td_target = r
-            else:
-                # Scegliamo l'azione migliore in s_next usando Q1
-                best_next_a = np.argmax(self.q1[s_next])
-                # Valutiamo il target usando Q2!
-                td_target = r + self.gamma * self.q2[s_next][best_next_a]
-
-            td_error = td_target - self.q1[s][a]
-            self.q1[s][a] += self.alpha * td_error
-
-        else:
-            # --- AGGIORNIAMO Q2 ---
-            if done:
-                td_target = r
-            else:
-                # Scegliamo l'azione migliore in s_next usando Q2
-                best_next_a = np.argmax(self.q2[s_next])
-                # Valutiamo il target usando Q1!
-                td_target = r + self.gamma * self.q1[s_next][best_next_a]
-
-            td_error = td_target - self.q2[s][a]
-            self.q2[s][a] += self.alpha * td_error
+        best_next = 0.0 if done else np.max(self.q[s_next])
+        td_target = r + self.gamma * best_next
+        td_error = td_target - self.q[s][a]
+        self.q[s][a] += self.alpha * td_error
 
     def decay_epsilon(self):
         self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
@@ -141,6 +111,7 @@ class Trainer:
             else:
                 obs, info = self.env.reset()
 
+            # Sostituisci la riga 91 con:
             state = self.encoder.encode(self.env, info)
             ep_reward = 0.0
             info_next = info
@@ -164,6 +135,7 @@ class Trainer:
                     break
 
             self.agent.decay_epsilon()
+
             rewards.append(ep_reward)
 
             # Estrazione metriche per W&B
@@ -209,12 +181,10 @@ class Trainer:
     def evaluate(self, episodes=100, max_steps=300):
         rewards = []
         successes = 0
-        obs, info = self.env.reset(seed=43521)
 
         for _ in range(episodes):
             obs, info = self.env.reset()
             state = self.encoder.encode(self.env, info)
-            self.agent.epsilon = 0.0
             ep_reward = 0.0
             info_next = info
 
@@ -253,8 +223,8 @@ def train_sweep():
     )
 
     # Creazione ambiente
-    cfg_env = RewardConfig()
-    env = make_env(reward_config=cfg_env)
+    env = gym.make(DEFAULT_ENV_ID, render_mode="rgb_array")
+    env = MoondreamDenseRewardWrapper(env, beta=0.2, query_every=10)
     n_actions = int(cast(Discrete, env.action_space).n)
 
     # Inizializza le componenti con i parametri dello SWEEP
@@ -334,8 +304,8 @@ def main():
     )
 
     print(f"Creazione ambiente DoorKey 6x6...")
-    cfg = RewardConfig()
-    env = make_env(reward_config=cfg)
+    env = gym.make(DEFAULT_ENV_ID, render_mode="rgb_array")
+    env = MoondreamDenseRewardWrapper(env, beta=0.2, query_every=10)
     n_actions = int(cast(Discrete, env.action_space).n)
 
     encoder = StateEncoder()
@@ -357,63 +327,6 @@ def main():
 
     env.close()
     wandb.finish()
-
-    print("\n" + "=" * 40)
-    print("Avvio test visivo dell'agente addestrato!")
-    print("=" * 40)
-
-    env_vis = make_env(render_mode="human", reward_config=cfg)
-    test_episodes = 10
-
-    for ep in range(test_episodes):
-        obs, info = env_vis.reset()
-        state = encoder.encode(env_vis, info)
-        done = False
-        rewards = 0
-
-        print(f"Episodio visivo {ep + 1}/{test_episodes} in corso...")
-
-        prev_stage = None
-        step_num = 0
-
-        while not done and step_num < 300:
-            action = agent.act(state)
-            obs, reward, terminated, truncated, info = env_vis.step(action)
-            state = encoder.encode(env_vis, info)
-            done = terminated or truncated
-            step_num += 1
-            rewards += reward
-
-            # --- Progresso per stage ---
-            curr_stage = info.get("stage", "?")
-            completion = info.get("completion", 0.0)  # 0.0–1.0 globale
-            curr_progress = env_vis.get_wrapper_attr("curr_progress")
-            stage_labels = {
-                "no_key": "1/4 - Raccogli la chiave",
-                "has_key": "2/4 - Apri la porta",
-                "door_open": "3/4 - Raggiungi il goal",
-                "goal_reached": "4/4 - Goal raggiunto!  ✓",
-            }
-            label = stage_labels.get(curr_stage, curr_stage)
-
-            bar_len = 20
-            filled = int(curr_progress * bar_len)
-            bar = "█" * filled + "░" * (bar_len - filled)
-            print(
-                f"  step {step_num:3d} | reward: {rewards:3f} | Stage: {label:35s} "
-                f"| Progresso stage: [{bar}] {curr_progress*100:5.1f}% "
-                f"| Completamento: {completion*100:5.1f}%"
-            )
-            prev_stage = curr_stage
-
-            time.sleep(0.15)
-
-        print(
-            f"  → Episodio terminato in {step_num} step. Stage finale: {info.get('stage', '?')}\n"
-        )
-        time.sleep(1.0)
-
-    env_vis.close()
 
 
 if __name__ == "__main__":

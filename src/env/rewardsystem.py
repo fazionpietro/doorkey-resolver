@@ -39,12 +39,13 @@ class EventSnapshot:
 # ────────────────────────────────────────────
 @dataclass
 class RewardConfig:
+    step_reward: float = 0.3
     key_bonus: float = 0.2
     door_bonus: float = 0.2
     goal_bonus: float = 0.4
     regression_penalty: float = -0.3
-    time_penalty: float = -0.01
-    shaping_scale: float = 0.5
+    time_penalty: float = -0.001
+    shaping_scale: float = 0.99
     gamma: float = 0.99
 
 
@@ -114,6 +115,10 @@ class DoorKeyRewardSystem(gym.Wrapper):
         self.door_pos = self._find_stage_goal_position("door")
         self.goal_pos = self._find_stage_goal_position("goal")
 
+        self._dist_to_key = self._bfs_full_map(self.key_pos)
+        self._dist_to_door = self._bfs_full_map(self.door_pos)
+        self._dist_to_goal = self._bfs_full_map(self.goal_pos, ignore_closed_door=True)
+
         # Calcola le distanze BFS ottimali tra le fasi successive.
         # Questi valori sono usati come riferimento per normalizzare il progresso.
         self.stage_ref_distances = {
@@ -179,11 +184,16 @@ class DoorKeyRewardSystem(gym.Wrapper):
             env_reward=float(env_reward),
             stage_bonus=self._compute_stage_bonus(milestones),
             progress_shaping=self._compute_progress_shaping(
-                self.prev_stage, self.curr_stage, self.prev_progress, self.curr_progress
+                self.prev_stage,
+                self.curr_stage,
+                self.prev_progress,
+                self.curr_progress,
+                terminated,
             ),
             regression_penalty=self._compute_regression_penalty(regressions),
             time_penalty=step_time_penalty,
         )
+
         info = self._augment_info(info, reward_parts, milestones, regressions)
 
         return obs, reward_parts.total, terminated, truncated, info
@@ -287,17 +297,15 @@ class DoorKeyRewardSystem(gym.Wrapper):
 
         if stage == Stage.NO_KEY:
             target = self.key_pos
-            dist = self._bfs_distance(agent_pos, target)
+            dist = self._dist_to_key.get(agent_pos, 10**9)
 
         elif stage == Stage.HAS_KEY:
             target = self.door_pos
-            dist = self._bfs_distance(agent_pos, target)
+            dist = self._dist_to_door.get(agent_pos, 10**9)
 
         elif stage == Stage.DOOR_OPEN:
             target = self.goal_pos
-            dist = self._bfs_distance(agent_pos, target, ignore_closed_door=True)
-        else:
-            return 0.0
+            dist = self._dist_to_goal.get(agent_pos, 10**9)
 
         ref = self.stage_ref_distances.get(stage, 1)
 
@@ -313,23 +321,23 @@ class DoorKeyRewardSystem(gym.Wrapper):
         curr_stage: Stage | None,
         prev_progress: float,
         curr_progress: float,
+        terminated: bool,
     ) -> float:
-        """
-        Calcola il termine di potential-based reward shaping (Ng et al., 1999).
-        Il potenziale globale combina l'indice della fase con il progresso BFS locale,
-        garantendo che lo shaping sia teoretically safe (non altera la politica ottima).
-        Formula: F = γ * Φ(s') - Φ(s)
-        """
+
         if prev_stage is None or curr_stage is None:
+            return 0.0
+
+        if prev_progress == curr_progress:
             return 0.0
 
         # Calcola il potenziale globale unendo Stage + Progresso BFS
         prev_potential = self._compute_stage_potential(prev_stage, prev_progress)
         curr_potential = self._compute_stage_potential(curr_stage, curr_progress)
 
-        # Delta basato sul potenziale globale (Ng et al., 1999)
-        delta = self.config.gamma * curr_potential - prev_potential
-        return self.config.shaping_scale * delta
+        reward = (self.config.gamma * curr_potential * self.config.shaping_scale) - (
+            prev_potential * self.config.shaping_scale
+        )
+        return reward
 
     def _compute_stage_bonus(self, milestones: set[str]) -> float:
         """
@@ -375,6 +383,7 @@ class DoorKeyRewardSystem(gym.Wrapper):
         curr_progress: float,
         milestones: set[str],
         regressions: set[str],
+        terminated: bool,
     ) -> RewardBreakdown:
         """
         Metodo ausiliario per comporre il RewardBreakdown completo.
@@ -385,7 +394,11 @@ class DoorKeyRewardSystem(gym.Wrapper):
             env_reward=env_reward,
             stage_bonus=self._compute_stage_bonus(milestones),
             progress_shaping=self._compute_progress_shaping(
-                self.prev_stage, self.curr_stage, prev_progress, curr_progress
+                self.prev_stage,
+                self.curr_stage,
+                prev_progress,
+                curr_progress,
+                terminated,
             ),
             regression_penalty=self._compute_regression_penalty(regressions),
             time_penalty=self.config.time_penalty,
@@ -509,6 +522,44 @@ class DoorKeyRewardSystem(gym.Wrapper):
                 q.append((nx, ny, dist + 1))
 
         return 10**9
+
+    def _bfs_full_map(self, goal, *, ignore_closed_door=False) -> dict[tuple, int]:
+        """
+        Calcola la distanza BFS da ogni cella raggiungibile verso `goal`.
+        Viene eseguita UNA SOLA VOLTA nel reset().
+        """
+        base_env = self._get_base_env()
+        grid = base_env.grid
+        dist_map = {}
+        q = deque([(goal[0], goal[1], 0)])
+        dist_map[goal] = 0
+
+        while q:
+            x, y, d = q.popleft()
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                nx, ny = x + dx, y + dy
+                pos = (nx, ny)
+                if pos in dist_map:
+                    continue
+                if not (0 <= nx < grid.width and 0 <= ny < grid.height):
+                    continue
+                cell = grid.get(nx, ny)
+                blocked = False
+                if cell is not None:
+                    if cell.type == "wall":
+                        blocked = True
+                    elif cell.type == "door":
+                        is_open = bool(getattr(cell, "is_open", False))
+                        if not is_open and not ignore_closed_door:
+                            blocked = True
+
+                if blocked:
+                    continue
+
+                dist_map[pos] = d + 1
+                q.append((nx, ny, d + 1))
+
+        return dist_map
 
     def _completion_percentage(self) -> float:
         """
