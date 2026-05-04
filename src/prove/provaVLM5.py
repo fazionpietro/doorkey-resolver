@@ -25,7 +25,7 @@ model = PaliGemmaForConditionalGeneration.from_pretrained(
     model_id,
     torch_dtype=torch.bfloat16,
     device_map="auto",
-    token="",
+    token="~/.env.ml",
 )
 processor = AutoProcessor.from_pretrained(model_id)
 

@@ -126,7 +126,10 @@ class VLMDebugWrapper(gym.Wrapper):
             new_img.paste(img, (offset_x, 0))
             offset_x += img.width + separator
 
-        return self.get_vlm_reward(new_img)
+        new_img = new_img.resize((512, 1024))
+        new_img.save("debug.jpg")
+
+        return 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
 
     def get_vlm_reward(self, image: Image.Image):
 
