@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from inspect import currentframe
+from sre_compile import dis
 from typing import Any, cast
 
 from . import doorkey_events as doorev
@@ -39,13 +40,12 @@ class EventSnapshot:
 # ────────────────────────────────────────────
 @dataclass
 class RewardConfig:
-    step_reward: float = 0.3
     key_bonus: float = 0.2
     door_bonus: float = 0.2
-    goal_bonus: float = 0.4
+    goal_bonus: float = 0.6
     regression_penalty: float = -0.3
-    time_penalty: float = -0.001
-    shaping_scale: float = 0.99
+    time_penalty: float = -0.003
+    shaping_scale: float = 6
     gamma: float = 0.99
 
 
@@ -119,8 +119,8 @@ class DoorKeyRewardSystem(gym.Wrapper):
         self._dist_to_door = self._bfs_full_map(self.door_pos)
         self._dist_to_goal = self._bfs_full_map(self.goal_pos, ignore_closed_door=True)
 
-        # Calcola le distanze BFS ottimali tra le fasi successive.
-        # Questi valori sono usati come riferimento per normalizzare il progresso.
+        self._global_dist_door_open = self._dist_to_goal.copy()
+
         self.stage_ref_distances = {
             Stage.NO_KEY: max(1, self._bfs_distance(agent_start, self.key_pos)),
             Stage.HAS_KEY: max(1, self._bfs_distance(self.key_pos, self.door_pos)),
@@ -177,7 +177,6 @@ class DoorKeyRewardSystem(gym.Wrapper):
             self.curr_stage,
         )
 
-        # step_time_penalty = -0.002 if action in (0, 1) else self.config.time_penalty
         step_time_penalty = self.config.time_penalty
 
         reward_parts = RewardBreakdown(
@@ -282,37 +281,36 @@ class DoorKeyRewardSystem(gym.Wrapper):
         return regressions
 
     def _compute_stage_progress(self, stage: Stage) -> float:
-        """
-        Calcola il progresso normalizzato [0, 1] dell'agente nella fase corrente,
-        usando la distanza BFS rispetto al target della fase e la distanza di riferimento.
-        Un valore pari a 1.0 indica che il target è raggiunto.
-        """
         base_env = self._get_base_env()
         agent_pos = tuple(base_env.agent_pos)
+
         if stage == Stage.GOAL_REACHED:
             return 1.0
 
-        if self.key_pos is None or self.door_pos is None or self.goal_pos is None:
-            raise RuntimeError("Stage targets not initialized. Call reset() first.")
-
+        # Recuperiamo la mappa corretta in base allo stage
         if stage == Stage.NO_KEY:
-            target = self.key_pos
-            dist = self._dist_to_key.get(agent_pos, 10**9)
-
+            if self.key_pos is None:
+                return 0.0
+            raw_dist = self._bfs_distance(agent_pos, self.key_pos)
         elif stage == Stage.HAS_KEY:
-            target = self.door_pos
-            dist = self._dist_to_door.get(agent_pos, 10**9)
-
+            if self.door_pos is None:
+                return 0.0
+            raw_dist = self._bfs_distance(agent_pos, self.door_pos)
         elif stage == Stage.DOOR_OPEN:
-            target = self.goal_pos
-            dist = self._dist_to_goal.get(agent_pos, 10**9)
-
-        ref = self.stage_ref_distances.get(stage, 1)
-
-        if dist >= 10**9:
+            if self.goal_pos is None:
+                return 0.0
+            raw_dist = self._bfs_distance(
+                agent_pos, self.goal_pos, ignore_closed_door=True
+            )
+        else:
             return 0.0
 
-        progress = 1.0 - (dist / ref)
+        if raw_dist >= 10**9:
+            return 0.0
+
+        ref = max(1, self.stage_ref_distances[stage])
+
+        progress = 1.0 - (raw_dist / ref)
         return max(0.0, min(1.0, progress))
 
     def _compute_progress_shaping(
@@ -327,17 +325,15 @@ class DoorKeyRewardSystem(gym.Wrapper):
         if prev_stage is None or curr_stage is None:
             return 0.0
 
-        if prev_progress == curr_progress:
+        if abs(curr_progress - prev_progress) < 1e-6:
             return 0.0
 
-        # Calcola il potenziale globale unendo Stage + Progresso BFS
         prev_potential = self._compute_stage_potential(prev_stage, prev_progress)
         curr_potential = self._compute_stage_potential(curr_stage, curr_progress)
 
-        reward = (self.config.gamma * curr_potential * self.config.shaping_scale) - (
-            prev_potential * self.config.shaping_scale
-        )
-        return reward
+        return (
+            self.config.gamma * curr_potential - prev_potential
+        ) * self.config.shaping_scale
 
     def _compute_stage_bonus(self, milestones: set[str]) -> float:
         """
@@ -558,6 +554,21 @@ class DoorKeyRewardSystem(gym.Wrapper):
 
                 dist_map[pos] = d + 1
                 q.append((nx, ny, d + 1))
+
+        values = dist_map.values()
+        val_min = min(values)
+        val_max = max(values)
+
+        new_min, new_max = 0.0, 1.0
+
+        for pos, d in dist_map.items():
+
+            norm_inverted = (
+                1 - ((d - val_min) / (val_max - val_min)) if val_max > val_min else 1.0
+            )
+
+            # Mappiamo nel range corretto
+            dist_map[pos] = round((norm_inverted * (new_max - new_min)) + new_min, 3)
 
         return dist_map
 

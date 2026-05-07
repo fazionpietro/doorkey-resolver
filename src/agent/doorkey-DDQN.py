@@ -31,58 +31,57 @@ from ExperienceReplayBuffer import ExperienceReplayBuffer, Experience
 PROJECT_NAME = "doorkey-qlearning"
 print(torch.cuda.is_available())
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-SEED = 42
-
-
-def set_seed(seed: int):
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
+MIN_BUFFER_FILL = 20_000
 
 
 # ─────────────────────────────────────────────
 # Reti Neurali
 # ─────────────────────────────────────────────
 class DualHeadDDQN(nn.Module):
-    def __init__(self, action_dim=5, env_size=7):
+    def __init__(self, action_dim=7, env_size=16):
         super().__init__()
 
-        self.flatten = nn.Flatten()
+        n_channels = 2
+        flattened_size = env_size * env_size * n_channels
+        SHARED_DIM = 64
 
-        # Rete MLP per la griglia (2 canali * env_size larghezza * env_size altezza)
-        input_size = 2 * env_size * env_size
         self.grid_mlp = nn.Sequential(
-            nn.Linear(input_size, 512),
+            nn.Flatten(),
+            nn.Linear(flattened_size, 512),
+            nn.LayerNorm(512),
             nn.ReLU(),
             nn.Linear(512, 256),
+            nn.LayerNorm(256),
             nn.ReLU(),
-            nn.Linear(256, 128),
+            nn.Linear(256, SHARED_DIM),
+            nn.LayerNorm(SHARED_DIM),
             nn.ReLU(),
         )
 
         self.scalar_mlp = nn.Sequential(
-            nn.Linear(2, 32), nn.ReLU(), nn.Linear(32, 16), nn.ReLU()
+            nn.Linear(9, 64),
+            nn.LayerNorm(64),
+            nn.ReLU(),
+            nn.Linear(64, 128),
+            nn.LayerNorm(128),
+            nn.ReLU(),
+            nn.Linear(128, SHARED_DIM),
+            nn.LayerNorm(SHARED_DIM),
+            nn.ReLU(),
         )
 
-        # Corpo finale che unisce i due flussi (128 + 16 = 144)
         self.fc = nn.Sequential(
-            nn.Linear(144, 128), nn.ReLU(), nn.Linear(128, action_dim)
+            nn.Linear(128, 256),
+            nn.ReLU(),
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Linear(128, action_dim),
         )
 
     def forward(self, image, features):
-        # Manteniamo solo i canali 0 (oggetto) e 2 (stato), scartando il colore (canale 1)
-        image = image[..., [0, 2]].float()
-        flat_grid = self.flatten(image)
-
-        # Elabora i due flussi
-        grid_out = self.grid_mlp(flat_grid)
-        scalar_out = self.scalar_mlp(features)
-
-        # Unisci e calcola i Q-Values
+        grid_input = image.float()
+        grid_out = self.grid_mlp(grid_input)
+        scalar_out = self.scalar_mlp(features.float())
         combined = torch.cat((grid_out, scalar_out), dim=1)
         return self.fc(combined)
 
@@ -96,12 +95,13 @@ class DDQNObservationWrapper(gym.ObservationWrapper):
         super().__init__(env)
 
         obs_space = cast(Dict, self.env.observation_space)
-        img_space = obs_space["image"]
+        img_space = cast(Box, obs_space["image"])
+        h, w, _ = img_space.shape
 
         self.observation_space = Dict(
             {
-                "image": img_space,
-                "features": Box(low=-100.0, high=100.0, shape=(2,), dtype=np.float32),
+                "image": Box(low=0.0, high=1.0, shape=(h, w, 2), dtype=np.float32),
+                "features": Box(low=0.0, high=1.0, shape=(9,), dtype=np.float32),
             }
         )
 
@@ -109,6 +109,10 @@ class DDQNObservationWrapper(gym.ObservationWrapper):
         base_env = cast(MiniGridEnv, self.unwrapped)
         curr_wrapper = self.env
         reward_sys = None
+        image = observation["image"].astype(np.float32)
+        image_out = image[:, :, [0, 2]].copy()
+        image_out[:, :, 0] /= 10.0
+        image_out[:, :, 1] /= 2.0
 
         while hasattr(curr_wrapper, "env"):
             if isinstance(curr_wrapper, DoorKeyRewardSystem):
@@ -120,42 +124,31 @@ class DDQNObservationWrapper(gym.ObservationWrapper):
             reward_sys = curr_wrapper
 
         if reward_sys is None:
-            raise RuntimeError(
-                "DoorKeyRewardSystem non trovato nello stack dell'ambiente."
-            )
+            raise RuntimeError("DoorKeyRewardSystem non trovato nello stack.")
 
         stage = reward_sys.curr_stage
         progress = reward_sys.curr_progress
 
-        stage_idx = 0.0
+        stage_idx = 0
         if stage == Stage.HAS_KEY:
-            stage_idx = 1.0
+            stage_idx = 1
         elif stage == Stage.DOOR_OPEN:
-            stage_idx = 2.0
+            stage_idx = 2
         elif stage == Stage.GOAL_REACHED:
-            stage_idx = 3.0
+            stage_idx = 3
 
-        if stage == Stage.NO_KEY or stage is None:
-            target = reward_sys.key_pos
-        elif stage == Stage.HAS_KEY:
-            target = reward_sys.door_pos
-        else:
-            target = reward_sys.goal_pos
-
-        if target is None:
-            target = (0, 0)
-
-        agent_pos = base_env.agent_pos
         agent_dir = base_env.agent_dir
 
-        dx = target[0] - agent_pos[0]
-        dy = target[1] - agent_pos[1]
+        dir_one_hot = np.zeros(4, dtype=np.float32)
+        dir_one_hot[agent_dir] = 1.0
 
-        # features = np.array([dx, dy, agent_dir, progress, stage_idx], dtype=np.float32)
-        features = np.array([progress, (stage_idx / 3.0)], dtype=np.float32)
+        stage_one_hot = np.zeros(4, dtype=np.float32)
+        stage_one_hot[stage_idx] = 1.0
+
+        features = np.concatenate([dir_one_hot, stage_one_hot, [np.float32(progress)]])
 
         return {
-            "image": observation["image"],
+            "image": image_out,
             "features": features,
         }
 
@@ -194,9 +187,9 @@ class PERDDQNAgent:
 
         self.gamma = gamma
         self.epsilon = 1.0
-        self.epsilon_min = 0.1
+        self.epsilon_min = 0.05
         self.epsilon_decay: float = eps_decay
-        self.tau = 0.005
+        self.tau = 0.001
 
         self.beta = 0.5
         self.beta_increment = 0.00001
@@ -205,6 +198,7 @@ class PERDDQNAgent:
         if not evaluate and random.random() < self.epsilon:
             return random.randint(0, self.action_dim - 1)
 
+        self.policy_net.eval()
         img_t = torch.tensor(state["image"]).unsqueeze(0).to(self.device)
         feat_t = torch.tensor(state["features"]).unsqueeze(0).to(self.device)
 
@@ -308,7 +302,7 @@ class TrainerDDQN:
         self.env = env
         self.agent = agent
 
-    def train(self, episodes=3000, max_steps=400, log_every=100):
+    def train(self, episodes=3000, max_steps=400, log_every=50):
         rewards = []
         success_buffer = deque(maxlen=100)
         count = 0
@@ -324,17 +318,17 @@ class TrainerDDQN:
             for step in range(max_steps):
                 action = self.agent.select_action(state)
                 next_state, reward, terminated, truncated, info = self.env.step(action)
-                done_for_q = terminated
-                episode_ended = terminated or truncated
 
-                exp = Experience(state, action, reward, next_state, done_for_q)
+                episode_ended = terminated
+
+                exp = Experience(state, action, reward, next_state, episode_ended)
                 self.agent.memory.add(exp)
 
-                if count % 4 == 0:
+                if count % 4 == 0 and len(self.agent.memory) > MIN_BUFFER_FILL:
                     loss = self.agent.update()
                     # self.agent.update_target_network()
 
-                if count % 15000 == 0:
+                if count % 2000 == 0:
                     self.agent.update_target_network2()
 
                 ep_loss += float(loss) if loss is not None else 0.0
@@ -346,11 +340,11 @@ class TrainerDDQN:
                 # if ep > 1000:
                 #    self.agent.decay_epsilon()
 
-                self.agent.decay_epsilon2()
-
                 count += 1
                 if episode_ended:
                     break
+
+            self.agent.decay_epsilon()
 
             rewards.append(ep_reward)
             final_stage = info.get("stage", "unknown")
@@ -388,7 +382,7 @@ class TrainerDDQN:
                 if success_rate > 0.90:
                     break
 
-    def evaluate(self, episodes=50, max_steps=300):
+    def evaluate(self, episodes=100, max_steps=300):
         rewards = []
         successes = 0
         original_epsilon = self.agent.epsilon
@@ -423,7 +417,6 @@ class TrainerDDQN:
 def train_sweep_ddqn():
     wandb.init(project=PROJECT_NAME)
     config = wandb.config
-    set_seed(SEED)
 
     cfg_env = RewardConfig()
     env = make_env(reward_config=cfg_env)
@@ -440,7 +433,7 @@ def train_sweep_ddqn():
         lr=config.lr,
         gamma=config.gamma,
         eps_decay=config.eps_decay,
-        buffer_size=1_000_000,
+        buffer_size=600_000,
         batch_size=256,
         device=device,
         env_size=env_width,
@@ -479,7 +472,7 @@ def main():
         return
 
     print("Creazione ambiente DoorKey...")
-    set_seed(SEED)
+
     cfg_env = RewardConfig()
     env = make_env(reward_config=cfg_env)
     env = DDQNObservationWrapper(env)
@@ -508,7 +501,7 @@ def main():
         lr=args.lr,
         gamma=args.gamma,
         eps_decay=args.eps_decay,
-        buffer_size=1_000_000,
+        buffer_size=600_000,
         batch_size=256,
         device=device,
         env_size=env_width,
