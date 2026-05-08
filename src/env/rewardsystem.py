@@ -40,13 +40,14 @@ class EventSnapshot:
 # ────────────────────────────────────────────
 @dataclass
 class RewardConfig:
-    key_bonus: float = 0.2
-    door_bonus: float = 0.2
+    max_step_reward: float = 0.33
+    key_bonus: float = 0.4
+    door_bonus: float = 0.4
     goal_bonus: float = 0.6
     regression_penalty: float = -0.3
     time_penalty: float = -0.003
-    shaping_scale: float = 6
-    gamma: float = 0.99
+    shaping_scale: float = 4
+    gamma: float = 1
 
 
 # ─────────────────────────────────────────────
@@ -311,7 +312,7 @@ class DoorKeyRewardSystem(gym.Wrapper):
         ref = max(1, self.stage_ref_distances[stage])
 
         progress = 1.0 - (raw_dist / ref)
-        return max(0.0, min(1.0, progress))
+        return min(1.0, progress)
 
     def _compute_progress_shaping(
         self,
@@ -331,9 +332,11 @@ class DoorKeyRewardSystem(gym.Wrapper):
         prev_potential = self._compute_stage_potential(prev_stage, prev_progress)
         curr_potential = self._compute_stage_potential(curr_stage, curr_progress)
 
-        return (
-            self.config.gamma * curr_potential - prev_potential
-        ) * self.config.shaping_scale
+        return min(
+            self.config.max_step_reward,
+            (self.config.gamma * curr_potential - prev_potential)
+            * self.config.shaping_scale,
+        )
 
     def _compute_stage_bonus(self, milestones: set[str]) -> float:
         """

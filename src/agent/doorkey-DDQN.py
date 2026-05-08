@@ -302,7 +302,7 @@ class TrainerDDQN:
         self.env = env
         self.agent = agent
 
-    def train(self, episodes=3000, max_steps=400, log_every=50):
+    def train(self, episodes=3000, max_steps=950, log_every=50):
         rewards = []
         success_buffer = deque(maxlen=100)
         count = 0
@@ -328,7 +328,7 @@ class TrainerDDQN:
                     loss = self.agent.update()
                     # self.agent.update_target_network()
 
-                if count % 2000 == 0:
+                if count % 3000 == 0:
                     self.agent.update_target_network2()
 
                 ep_loss += float(loss) if loss is not None else 0.0
