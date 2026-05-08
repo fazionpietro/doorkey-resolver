@@ -53,7 +53,10 @@ class DualHeadDDQN(nn.Module):
             nn.Linear(512, 256),
             nn.LayerNorm(256),
             nn.ReLU(),
-            nn.Linear(256, SHARED_DIM),
+            nn.Linear(256, 128),
+            nn.LayerNorm(128),
+            nn.ReLU(),
+            nn.Linear(128, SHARED_DIM),
             nn.LayerNorm(SHARED_DIM),
             nn.ReLU(),
         )
@@ -61,12 +64,6 @@ class DualHeadDDQN(nn.Module):
         self.scalar_mlp = nn.Sequential(
             nn.Linear(9, 64),
             nn.LayerNorm(64),
-            nn.ReLU(),
-            nn.Linear(64, 128),
-            nn.LayerNorm(128),
-            nn.ReLU(),
-            nn.Linear(128, SHARED_DIM),
-            nn.LayerNorm(SHARED_DIM),
             nn.ReLU(),
         )
 
@@ -302,7 +299,7 @@ class TrainerDDQN:
         self.env = env
         self.agent = agent
 
-    def train(self, episodes=3000, max_steps=950, log_every=50):
+    def train(self, episodes=3000, max_steps=400, log_every=50):
         rewards = []
         success_buffer = deque(maxlen=100)
         count = 0
@@ -326,10 +323,10 @@ class TrainerDDQN:
 
                 if count % 4 == 0 and len(self.agent.memory) > MIN_BUFFER_FILL:
                     loss = self.agent.update()
-                    # self.agent.update_target_network()
+                    self.agent.update_target_network()
 
-                if count % 3000 == 0:
-                    self.agent.update_target_network2()
+                # if count % 3000 == 0:
+                #    self.agent.update_target_network2()
 
                 ep_loss += float(loss) if loss is not None else 0.0
                 ep_reward += float(reward)

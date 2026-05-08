@@ -14,7 +14,7 @@ def debug_rewardsystem():
     config = RewardConfig()
 
     # Inizializziamo l'ambiente MiniGrid DoorKey (render_mode="human" per mostrare la finestra visiva)
-    base_env = gym.make("MiniGrid-DoorKey-16x16-v0", render_mode="human")
+    base_env = gym.make("MiniGrid-DoorKey-8x8-v0", render_mode="human")
 
     # Applichiamo il nostro wrapper
     env = DoorKeyRewardSystem(base_env, config)
