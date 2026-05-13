@@ -31,7 +31,7 @@ from ExperienceReplayBuffer import ExperienceReplayBuffer, Experience
 PROJECT_NAME = "doorkey-qlearning"
 print(torch.cuda.is_available())
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-MIN_BUFFER_FILL = 20_000
+MIN_BUFFER_FILL = 2_000
 
 
 # ─────────────────────────────────────────────
@@ -47,16 +47,16 @@ class DualHeadDDQN(nn.Module):
 
         self.grid_mlp = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(flattened_size, 512),
+            nn.Linear(flattened_size, 1024),
+            nn.LayerNorm(1024),
+            nn.ReLU(),
+            nn.Linear(1024, 512),
             nn.LayerNorm(512),
             nn.ReLU(),
             nn.Linear(512, 256),
             nn.LayerNorm(256),
             nn.ReLU(),
-            nn.Linear(256, 128),
-            nn.LayerNorm(128),
-            nn.ReLU(),
-            nn.Linear(128, SHARED_DIM),
+            nn.Linear(256, SHARED_DIM),
             nn.LayerNorm(SHARED_DIM),
             nn.ReLU(),
         )
@@ -196,12 +196,20 @@ class PERDDQNAgent:
             return random.randint(0, self.action_dim - 1)
 
         self.policy_net.eval()
-        img_t = torch.tensor(state["image"]).unsqueeze(0).to(self.device)
-        feat_t = torch.tensor(state["features"]).unsqueeze(0).to(self.device)
+        img_t = torch.as_tensor(
+            state["image"], dtype=torch.float32, device=self.device
+        ).unsqueeze(0)
+        feat_t = torch.as_tensor(
+            state["features"], dtype=torch.float32, device=self.device
+        ).unsqueeze(0)
 
         with torch.no_grad():
             q_values = self.policy_net(img_t, feat_t)
-            return q_values.argmax(dim=1).item()
+
+        if not evaluate:
+            self.policy_net.train()
+
+        return q_values.argmax(dim=1).item()
 
     def update(self):
         if len(self.memory) < self.memory.batch_size:
@@ -221,8 +229,8 @@ class PERDDQNAgent:
         rew = np.array([e.reward for e in experiences], dtype=np.float32)
         done = np.array([e.done for e in experiences], dtype=np.float32)
 
-        img_t = torch.tensor(img).to(self.device)
-        feat_t = torch.tensor(feat).to(self.device)
+        img_t = torch.as_tensor(img, dtype=torch.float32, device=self.device)
+        feat_t = torch.as_tensor(feat, dtype=torch.float32, device=self.device)
         act_t = torch.tensor(act, dtype=torch.int64).unsqueeze(1).to(self.device)
         rew_t = torch.tensor(rew).unsqueeze(1).to(self.device)
         next_img_t = torch.tensor(next_img).to(self.device)
@@ -285,11 +293,6 @@ class PERDDQNAgent:
     def decay_epsilon(self):
         self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
 
-    def decay_epsilon2(self):
-        delta: float = (1 - self.epsilon_min) / self.epsilon_decay
-        self.epsilon = max(self.epsilon_min, self.epsilon - delta)
-        return
-
 
 # ─────────────────────────────────────────────
 # Trainer
@@ -299,12 +302,13 @@ class TrainerDDQN:
         self.env = env
         self.agent = agent
 
-    def train(self, episodes=3000, max_steps=400, log_every=50):
+    def train(self, episodes=3000, max_steps=650, log_every=50):
         rewards = []
         success_buffer = deque(maxlen=100)
         count = 0
 
         for ep in range(episodes):
+
             state, info = self.env.reset()
             ep_reward = 0.0
 
@@ -323,10 +327,10 @@ class TrainerDDQN:
 
                 if count % 4 == 0 and len(self.agent.memory) > MIN_BUFFER_FILL:
                     loss = self.agent.update()
-                    self.agent.update_target_network()
+                    # self.agent.update_target_network()
 
-                # if count % 3000 == 0:
-                #    self.agent.update_target_network2()
+                if count % 4000 == 0:
+                    self.agent.update_target_network2()
 
                 ep_loss += float(loss) if loss is not None else 0.0
                 ep_reward += float(reward)
@@ -372,6 +376,14 @@ class TrainerDDQN:
                 print(
                     f"Ep {ep:5d}: reward={ep_reward:.2f}, avg_100={avg_r:.2f}, "
                     f"succ_rate={current_success_rate:.2f}, eps={self.agent.epsilon:.3f}, loss={avg_loss:.4f}"
+                )
+                print(
+                    f"Ep {ep:5d} | "
+                    f"eps={self.agent.epsilon:.3f} | "
+                    f"buffer={len(self.agent.memory):6d} | "
+                    f"steps={steps_taken:3d} | "
+                    f"reward={ep_reward:.3f} | "
+                    f"stage={final_stage}"
                 )
 
             if self.agent.epsilon == self.agent.epsilon_min and count % 500 == 0:
@@ -431,7 +443,7 @@ def train_sweep_ddqn():
         gamma=config.gamma,
         eps_decay=config.eps_decay,
         buffer_size=600_000,
-        batch_size=256,
+        batch_size=128,
         device=device,
         env_size=env_width,
     )
@@ -470,6 +482,8 @@ def main():
 
     print("Creazione ambiente DoorKey...")
 
+    print(f"Device: {device}")
+
     cfg_env = RewardConfig()
     env = make_env(reward_config=cfg_env)
     env = DDQNObservationWrapper(env)
@@ -499,7 +513,7 @@ def main():
         gamma=args.gamma,
         eps_decay=args.eps_decay,
         buffer_size=600_000,
-        batch_size=256,
+        batch_size=128,
         device=device,
         env_size=env_width,
     )

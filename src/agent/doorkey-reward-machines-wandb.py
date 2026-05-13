@@ -10,7 +10,6 @@ import argparse
 import math
 import numpy as np
 import gymnasium as gym
-import matplotlib.pyplot as plt
 from typing import cast
 from gymnasium.spaces import Discrete
 import wandb

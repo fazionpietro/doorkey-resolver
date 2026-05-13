@@ -40,12 +40,12 @@ class EventSnapshot:
 # ────────────────────────────────────────────
 @dataclass
 class RewardConfig:
-    key_bonus: float = 0.4
-    door_bonus: float = 0.4
-    goal_bonus: float = 0.6
-    regression_penalty: float = -0.5
-    time_penalty: float = -0.003
-    shaping_scale: float = 0.3
+    key_bonus: float = 0.5
+    door_bonus: float = 0.5
+    goal_bonus: float = 1.0
+    regression_penalty: float = -0.3
+    time_penalty: float = -0.0007
+    shaping_scale: float = 3
     gamma: float = 0.997
 
 
@@ -286,32 +286,13 @@ class DoorKeyRewardSystem(gym.Wrapper):
 
         if stage == Stage.GOAL_REACHED:
             return 1.0
-
-        # Recuperiamo la mappa corretta in base allo stage
-        if stage == Stage.NO_KEY:
-            if self.key_pos is None:
-                return 0.0
-            raw_dist = self._bfs_distance(agent_pos, self.key_pos)
+        elif stage == Stage.NO_KEY:
+            return self._dist_to_key.get(agent_pos, 0.0)
         elif stage == Stage.HAS_KEY:
-            if self.door_pos is None:
-                return 0.0
-            raw_dist = self._bfs_distance(agent_pos, self.door_pos)
+            return self._dist_to_door.get(agent_pos, 0.0)
         elif stage == Stage.DOOR_OPEN:
-            if self.goal_pos is None:
-                return 0.0
-            raw_dist = self._bfs_distance(
-                agent_pos, self.goal_pos, ignore_closed_door=True
-            )
-        else:
-            return 0.0
-
-        if raw_dist >= 10**9:
-            return 0.0
-
-        ref = max(1, self.stage_ref_distances[stage])
-
-        progress = 1.0 - (raw_dist / ref)
-        return progress
+            return self._dist_to_goal.get(agent_pos, 0.0)
+        return 0.0
 
     def _compute_progress_shaping(
         self,
