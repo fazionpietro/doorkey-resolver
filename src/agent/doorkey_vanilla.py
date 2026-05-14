@@ -31,11 +31,13 @@ ALPHA = 0.1
 GAMMA = 0.99
 EPS_START = 1.0
 EPS_END = 0.05
+EPS_DECAY = 0.995
 N_EP = 25_000
 N_EP_SWEEP = 15_000
 SEED = 42
 K = 1.0
-Q_INIT = 2.0          # valore iniziale ottimistico (più conservativo senza shaping)
+Q_INIT = 2.0
+
 QTABLE_PATH = "q_table_vanilla.pkl"
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -46,10 +48,10 @@ sweep_config = {
     "metric": {"name": "performance/success_rate_100", "goal": "maximize"},
     "early_terminate": {"type": "hyperband", "min_iter": 2000, "eta": 2},
     "parameters": {
-        "alpha":   {"values": [0.01, 0.15, 0.30]},
-        "gamma":   {"values": [0.95, 0.99, 0.999]},
+        "alpha": {"values": [0.01, 0.15, 0.30]},
+        "gamma": {"values": [0.95, 0.99, 0.999]},
         "eps_end": {"values": [0.01, 0.05]},
-        "k":       {"values": [0.5, 1.0, 2.0]},
+        "k": {"values": [0.5, 1.0, 2.0]},
     },
 }
 
@@ -62,25 +64,24 @@ def make_env(env_id: str, render_mode: str | None = None) -> gym.Env:
     return FullyObsWrapper(base)
 
 
-def get_epsilon_cosine(
-    episode: int,
-    n_episodes: int,
-    eps_start: float,
-    eps_end: float,
-    k: float = K,
-) -> float:
-    progress = episode / n_episodes
-    cosine_val = 0.5 * (1.0 + math.cos(math.pi * (progress ** k)))
-    return eps_end + (eps_start - eps_end) * cosine_val
+def decay_epsilon(epsilon, eps_end, eps_decay):
+    return max(eps_end, epsilon * eps_decay)
 
 
 def safe_mean(lst: list) -> float:
     return float(np.mean(lst)) if lst else 0.0
 
 
-def extract_state(obs) -> bytes:
-    """Rappresentazione compatta: canali object-type + color (esclude stato)."""
-    return obs["image"][:, :, [0, 2]].tobytes()
+def extract_state(env, obs) -> bytes:
+    """Combina la mappa con posizione e direzione dell'agente."""
+    # Mappa: object-type e state (canali 0 e 2)
+    grid_bytes = obs["image"][:, :, [0, 2]].tobytes()
+
+    # Prendi posizione e direzione
+    agent_pos = tuple(env.unwrapped.agent_pos)
+    agent_dir = obs["direction"]
+
+    return pickle.dumps((grid_bytes, agent_pos, agent_dir))
 
 
 def make_q_table(n_actions: int):
@@ -112,6 +113,7 @@ def update_q(
 # ──────────────────────────────────────────────────────────────────────────────
 def run_loop(cfg, n_episodes: int):
     eps_end = getattr(cfg, "eps_end", EPS_END)
+    eps_decay = getattr(cfg, "eps_decay", EPS_DECAY)
     k = getattr(cfg, "k", K)
 
     random.seed(SEED)
@@ -119,6 +121,8 @@ def run_loop(cfg, n_episodes: int):
 
     env = make_env(cfg.env_id)
     env.reset(seed=SEED)
+
+    epsilon = 1.0
 
     n_actions = int(cast(Discrete, env.action_space).n)
     q_table = make_q_table(n_actions)
@@ -132,14 +136,16 @@ def run_loop(cfg, n_episodes: int):
         ep_reward = 0.0
         steps = td_sum = 0.0
 
-        epsilon = get_epsilon_cosine(episode, n_episodes, EPS_START, eps_end, k)
+        epsilon = decay_epsilon(epsilon, eps_end, eps_decay)
 
         while not (done or truncated):
             action = choose_action(state, q_table, epsilon, env.action_space)
             next_obs, reward, done, truncated, info = env.step(action)
             next_state = extract_state(next_obs)
 
-            td = update_q(q_table, state, action, float(reward), next_state, cfg.alpha, cfg.gamma)
+            td = update_q(
+                q_table, state, action, float(reward), next_state, cfg.alpha, cfg.gamma
+            )
             td_sum += td
             visited_states.add(state)
             state = next_state
@@ -152,12 +158,12 @@ def run_loop(cfg, n_episodes: int):
         sr = safe_mean(success_history[-100:])
 
         log = {
-            "reward/episode":               ep_reward,
+            "reward/episode": ep_reward,
             "performance/success_rate_100": sr,
-            "performance/episode_length":   steps,
-            "training/mean_td_error":       td_sum / steps if steps > 0 else 0.0,
-            "training/q_states_unique":     len(visited_states),
-            "hyperparams/epsilon":          epsilon,
+            "performance/episode_length": steps,
+            "training/mean_td_error": td_sum / steps if steps > 0 else 0.0,
+            "training/q_states_unique": len(visited_states),
+            "hyperparams/epsilon": epsilon,
         }
 
         if episode % 500 == 0 or episode == n_episodes - 1:
@@ -191,12 +197,12 @@ def _sweep_train():
     run = wandb.init(
         project="minigrid-qlearning",
         config={
-            "env_id":     ENV_ID,
-            "alpha":      ALPHA,
-            "gamma":      GAMMA,
-            "eps_start":  EPS_START,
-            "eps_end":    EPS_END,
-            "k":          K,
+            "env_id": ENV_ID,
+            "alpha": ALPHA,
+            "gamma": GAMMA,
+            "eps_start": EPS_START,
+            "eps_end": EPS_END,
+            "k": K,
             "n_episodes": N_EP_SWEEP,
         },
     )
@@ -206,17 +212,17 @@ def _sweep_train():
 
 def train_final(alpha: float, gamma: float, eps_end: float, k: float):
     run = wandb.init(
-        project="minigrid-qlearning",
-        name="final-vanilla",
+        project="doorkey-qlearning",
+        name="qlearning-vanilla",
         config={
-            "env_id":     ENV_ID,
-            "alpha":      alpha,
-            "gamma":      gamma,
-            "eps_start":  EPS_START,
-            "eps_end":    eps_end,
-            "k":          k,
+            "env_id": ENV_ID,
+            "alpha": alpha,
+            "gamma": gamma,
+            "eps_start": EPS_START,
+            "eps_end": eps_end,
+            "k": k,
             "n_episodes": N_EP,
-            "run_type":   "final",
+            "run_type": "final",
         },
     )
     q_table = run_loop(run.config, N_EP)
@@ -260,7 +266,9 @@ def test_agent(q_table=None, n_runs: int = 5, video_folder: str = "./videos"):
         total_reward = 0.0
 
         while not (done or truncated):
-            action = choose_action(state, q_table, epsilon=0.0, action_space=env.action_space)
+            action = choose_action(
+                state, q_table, epsilon=0.0, action_space=env.action_space
+            )
             obs, reward, done, truncated, _ = env.step(action)
             state = extract_state(obs)
             total_reward += float(reward)
@@ -283,18 +291,19 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="MiniGrid-DoorKey-8x8 · Q-Learning vanilla + Cosine Annealing"
     )
-    parser.add_argument("--mode",        choices=["sweep", "train", "test"], default="train")
-    parser.add_argument("--sweep_count", type=int,   default=15)
-    parser.add_argument("--alpha",       type=float, default=ALPHA)
-    parser.add_argument("--gamma",       type=float, default=GAMMA)
-    parser.add_argument("--eps_end",     type=float, default=EPS_END)
-    parser.add_argument("--k",           type=float, default=K)
-    parser.add_argument("--n_runs",      type=int,   default=5)
+    parser.add_argument("--mode", choices=["sweep", "train", "test"], default="train")
+    parser.add_argument("--sweep_count", type=int, default=15)
+    parser.add_argument("--alpha", type=float, default=ALPHA)
+    parser.add_argument("--gamma", type=float, default=GAMMA)
+    parser.add_argument("--eps_end", type=float, default=EPS_END)
+    parser.add_argument("--eps_decay", type=float, default=EPS_END)
+    parser.add_argument("--k", type=float, default=K)
+    parser.add_argument("--n_runs", type=int, default=5)
     args = parser.parse_args()
 
     if args.mode == "sweep":
         print(f"=== Sweep ({args.sweep_count} run × {N_EP_SWEEP} episodi) ===")
-        sweep_id = wandb.sweep(sweep_config, project="minigrid-qlearning")
+        sweep_id = wandb.sweep(sweep_config, project="doorkey-qlearning")
         wandb.agent(sweep_id, function=_sweep_train, count=args.sweep_count)
         print("Sweep completato. Controlla wandb.ai per i best hyperparameters.")
 

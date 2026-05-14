@@ -18,8 +18,6 @@ from env.factory import make_env
 from env.rewardsystem import RewardConfig
 from env import doorkey_events as doorev
 
-SEED = 42
-
 
 class StateEncoder:
 
@@ -95,7 +93,7 @@ class QLearningAgent:
         self.q[s][a] += self.alpha * td_error
 
     def decay_epsilon(self):
-        self.epsilon = max(self.epsilon_min, self.epsilon - self.delta)
+        self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
 
 
 class Trainer:
@@ -112,7 +110,7 @@ class Trainer:
         for ep in range(episodes):
 
             if ep == 0:
-                obs, info = self.env.reset(seed=SEED)
+                obs, info = self.env.reset()
             else:
                 obs, info = self.env.reset()
 
@@ -228,7 +226,7 @@ def train_sweep():
 
     # Creazione ambiente
     cfg_env = RewardConfig()
-    env = make_env(reward_config=cfg_env)
+    env = make_env(reward_config=cfg_env, size=16)
     n_actions = int(cast(Discrete, env.action_space).n)
 
     # Inizializza le componenti con i parametri dello SWEEP

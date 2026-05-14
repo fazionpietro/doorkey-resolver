@@ -250,19 +250,14 @@ IL TUO OBIETTIVO E' CAPIRE LE REGOLE DEL LIVELLO E PRODURRE ESATTAMENTE IL FORMA
 REGOLE FISICHE INVALICABILI (UNIVERSALI)
 
     AGENTE: È il TRIANGOLO ROSSO. La punta indica dove guarda (Nord=Su, Est=Destra, Sud=Giù, Ovest=Sinistra).
-
     MOVIMENTO: Si muove di 1 sola casella per volta. FORWARD avanza verso dove punta. LEFT/RIGHT ruotano sul posto di 90 gradi.
-
     MURI (GRIGI): Sono blocchi SOLIDI e IMPASSABILI. L'agente si muove solo sul pavimento nero (vuoto).
-
     INTERAZIONE RAGGIO CORTO: L'agente interagisce (raccoglie/usa/apre) SOLO con la singola casella esattamente attaccata alla sua punta.
 
 COME DEDURRE L'AMBIENTE (IL TUO COMPITO)
 
     GOAL: Il quadrato VERDE è sempre il traguardo finale.
-
     DEDUZIONE DEGLI OGGETTI: Non conosci a priori cosa facciano gli altri oggetti colorati. Devi dedurlo osservando la scena.
-
     REGOLE LOGICHE DA CERCARE: Se il percorso verso il goal è bloccato da un ostacolo, cerca sulla mappa altri oggetti. Esiste una regola aurea: Oggetti dello stesso colore o forma sono quasi sempre collegati logicamente. Se vedi un ostacolo di colore X, probabilmente ti serve un oggetto raccoglibile di colore X per superarlo.
 
 AZIONI DISPONIBILI:

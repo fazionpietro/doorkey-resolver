@@ -31,7 +31,7 @@ from ExperienceReplayBuffer import ExperienceReplayBuffer, Experience
 PROJECT_NAME = "doorkey-qlearning"
 print(torch.cuda.is_available())
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-MIN_BUFFER_FILL = 2_000
+MIN_BUFFER_FILL = 20_000
 
 
 # ─────────────────────────────────────────────
@@ -47,10 +47,7 @@ class DualHeadDDQN(nn.Module):
 
         self.grid_mlp = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(flattened_size, 1024),
-            nn.LayerNorm(1024),
-            nn.ReLU(),
-            nn.Linear(1024, 512),
+            nn.Linear(flattened_size, 512),
             nn.LayerNorm(512),
             nn.ReLU(),
             nn.Linear(512, 256),
@@ -81,6 +78,36 @@ class DualHeadDDQN(nn.Module):
         scalar_out = self.scalar_mlp(features.float())
         combined = torch.cat((grid_out, scalar_out), dim=1)
         return self.fc(combined)
+
+
+class DualHeadDDQN2(nn.Module):
+    def __init__(self, action_dim=7, env_size=16):
+        super().__init__()
+
+        n_channels = 2
+        flattened_size = env_size * env_size * n_channels
+        SHARED_DIM = 64
+
+        self.grid_mlp = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(flattened_size, 1024),
+            nn.LayerNorm(1024),
+            nn.ReLU(),
+            nn.Linear(1024, 512),
+            nn.LayerNorm(512),
+            nn.ReLU(),
+            nn.Linear(512, 256),
+            nn.LayerNorm(256),
+            nn.ReLU(),
+            nn.Linear(256, 128),
+            nn.LayerNorm(128),
+            nn.ReLU(),
+            nn.Linear(128, action_dim),
+        )
+
+    def forward(self, image, features):
+        grid_input = image.float()
+        return self.grid_mlp(grid_input)
 
 
 # ─────────────────────────────────────────────
@@ -302,7 +329,7 @@ class TrainerDDQN:
         self.env = env
         self.agent = agent
 
-    def train(self, episodes=3000, max_steps=650, log_every=50):
+    def train(self, episodes=3000, max_steps=450, log_every=50):
         rewards = []
         success_buffer = deque(maxlen=100)
         count = 0
@@ -329,7 +356,7 @@ class TrainerDDQN:
                     loss = self.agent.update()
                     # self.agent.update_target_network()
 
-                if count % 4000 == 0:
+                if count % 2500 == 0:
                     self.agent.update_target_network2()
 
                 ep_loss += float(loss) if loss is not None else 0.0
@@ -485,7 +512,7 @@ def main():
     print(f"Device: {device}")
 
     cfg_env = RewardConfig()
-    env = make_env(reward_config=cfg_env)
+    env = make_env(reward_config=cfg_env, size=8)
     env = DDQNObservationWrapper(env)
 
     n_actions = int(cast(Discrete, env.action_space).n)
@@ -512,7 +539,7 @@ def main():
         lr=args.lr,
         gamma=args.gamma,
         eps_decay=args.eps_decay,
-        buffer_size=600_000,
+        buffer_size=300_000,
         batch_size=128,
         device=device,
         env_size=env_width,

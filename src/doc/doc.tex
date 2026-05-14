@@ -1,6 +1,9 @@
 \documentclass[12pt,a4paper]{article}
 \usepackage[utf8]{inputenc}
+\DeclareUnicodeCharacter{00A0}{ } 
+
 \usepackage[T1]{fontenc}
+\usepackage{lmodern}
 \usepackage[italian]{babel}
 \usepackage{geometry}
 \usepackage{hyperref}
@@ -9,6 +12,19 @@
 \usepackage{titlesec}
 \usepackage{xcolor}
 \usepackage{listings}
+\usepackage{graphicx}
+\usepackage{float}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  frame=single,
+  backgroundcolor=\color{gray!10},
+  breaklines=true,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  keywordstyle=\color{blue}\bfseries,
+  stringstyle=\color{red}
+}
 
 \geometry{margin=2.5cm}
 
@@ -21,8 +37,8 @@
 \titleformat{\section}{\large\bfseries}{}{0em}{}[\titlerule]
 \titleformat{\subsection}{\normalsize\bfseries\itshape}{}{0em}{}
 
-\title{\textbf{Relazione Tecnica}\\[0.4em]
-       \large Progetto: Agenti RL e LLM/VLM su MiniGrid-DoorKey}
+\title{\textbf{Relazione Finale Completa}\\[0.4em]
+       \large Progetto: Agenti RL e Integrazione LLM/VLM in MiniGrid-DoorKey}
 \author{}
 \date{\today}
 
@@ -32,187 +48,87 @@
 \tableofcontents
 \bigskip
 
-%─────────────────────────────────────────────────────────────
 \section{Panoramica del Progetto}
+Il progetto analizza l'efficacia di diversi paradigmi di apprendimento per rinforzo (RL) e l'integrazione di modelli di visione e linguaggio (VLM/LLM) nell'ambiente \texttt{MiniGrid-DoorKey} di Gymnasium. Il compito dell'agente è sequenziale: localizzare una chiave, raccoglierla, aprire una porta chiusa e raggiungere l'obiettivo finale (casella verde). La sfida principale risiede nella natura sparsa del reward originale, affrontata in questo lavoro tramite un sistema di \textit{Reward Shaping} denso e l'ausilio di modelli linguistici per la valutazione delle azioni.
 
-Il progetto esplora diversi approcci di apprendimento per rinforzo (RL) e ragionamento
-basato su modelli linguistici (LLM/VLM) applicati all'ambiente
-\texttt{MiniGrid-DoorKey} di Gymnasium. Il task richiede a un agente di raccogliere
-una chiave, aprire una porta e raggiungere l'obiettivo verde, navigando in una
-griglia bidimensionale con osservazione parziale o completa.
+\section{Configurazione dell'Ambiente e Reward Shaping}
+Per superare i limiti del reward ambientale, è stato implementato il modulo \texttt{env/rewardsystem.py} che introduce un segnale denso basato sugli stati logici del task (\texttt{Stage}).
 
-Il codice è organizzato in tre cartelle:
+\subsection{Componenti del Reward}
+Il reward totale è calcolato come somma di componenti configurabili tramite \texttt{RewardConfig}:
 \begin{itemize}
-    \item \texttt{agent/} — algoritmi di addestramento (Q-Learning, DDQN, LLM-guided);
-    \item \texttt{env/} — wrapper e sistema di reward personalizzato;
-    \item \texttt{prove/} — esperimenti e prototipi con modelli visivi (VLM/LLM).
+    \item \textbf{Potential-based shaping}: implementato secondo la formula $F(s,s') = \gamma\,\Phi(s') - \Phi(s)$, dove $\Phi$ rappresenta il progresso BFS verso l'obiettivo corrente (chiave, porta o goal). Gli iperparametri scelti sono \textit{Shaping Scale} a $0.7$ e \textit{Gamma} ($\gamma$) a $0.995$.
+    \item \textbf{Bonus Milestone}: premi una-tantum per il completamento delle fasi ($+0.5$ per chiave/porta, $+1.0$ per il goal).
+    \item \textbf{Penalità}: una penalità temporale costante per step e una penalità di regressione per il ritorno a fasi precedenti.
 \end{itemize}
 
-%─────────────────────────────────────────────────────────────
-\section{Moduli Ambiente (\texttt{env/})}
+\section{Architetture degli Agenti e Iperparametri}
 
-\subsection{reward-system (\texttt{env/rewardsystem.py})}
-
-Implementa \texttt{DoorKeyRewardSystem}, un \texttt{gym.Wrapper} che sostituisce il
-reward sparso originale con un segnale denso e strutturato.
-
-Il reward totale per ogni step è la somma di cinque componenti configurabili
-tramite la classe \texttt{RewardConfig}:
-
-\begin{enumerate}
-    \item \textbf{Reward ambientale} — valore originale restituito dall'ambiente.
-    \item \textbf{Bonus milestone} — bonus una-tantum al raggiungimento di
-          sotto-obiettivi chiave (raccolta chiave, apertura porta, goal).
-    \item \textbf{Potential-based shaping} — $F(s,s') = \gamma\,\Phi(s') - \Phi(s)$
-          dove $\Phi$ rappresenta il progresso normalizzato BFS verso l'obiettivo
-          corrente lungo la sequenza \emph{chiave~→~porta~→~goal}.
-    \item \textbf{Penalità regressione} — punisce il ritorno a fasi precedenti
-          (es.\ perdere la chiave dopo averla raccolta).
-    \item \textbf{Penalità temporale} — piccola costante negativa per step,
-          per incentivare soluzioni rapide.
-\end{enumerate}
-
-Il progresso viene tracciato attraverso l'enum \texttt{Stage}
-(\texttt{NO\_KEY} → \texttt{HAS\_KEY} → \texttt{DOOR\_OPEN} → \texttt{GOAL\_REACHED})
-e un campo \texttt{curr\_progress} $\in [0,1]$ calcolato via BFS.
-
-\subsection{vlm\_wrapper (\texttt{env/vlm\_wrapper.py})}
-
-Implementa \texttt{VLMDebugWrapper}, un wrapper che arricchisce il reward
-con la valutazione di un modello linguistico locale (Ollama, modello
-\texttt{nemotron-3-nano:4b}).
-
-Ogni \texttt{query\_every} step, il wrapper:
-\begin{enumerate}
-    \item Converte lo stato della griglia in formato CSV testuale
-          (oggetti codificati come \texttt{wall}, \texttt{key\_yellow}, \texttt{door\_yellow\_locked}, ecc.);
-    \item Affianca il frame passato e quello corrente;
-    \item Invia un prompt strutturato al modello, che deve analizzare la scena,
-          valutare l'ultima azione e restituire \texttt{reward} e \texttt{progress}
-          in tag XML \texttt{<metrics>};
-    \item Somma il reward VLM al reward ambientale.
-\end{enumerate}
-
-Il prompt include regole esplicite sull'ambiente, criteri di assegnazione del
-reward e istruzioni di formato rigorose per facilitare il parsing della risposta.
-
-%─────────────────────────────────────────────────────────────
-\section{Agenti (\texttt{agent/})}
-
-\subsection{doorkey-vanilla (\texttt{agent/doorkey\_vanilla.py})}
-
-Baseline di Q-Learning tabellare sull'ambiente \texttt{MiniGrid-DoorKey-8x8}.
-Lo stato è codificato come coppia di canali dell'osservazione immagine
-(tipo oggetto e colore) serializzata in bytes. La politica $\epsilon$-greedy
-usa un \textbf{cosine annealing} dell'esplorazione:
-\[
-  \epsilon(t) = \epsilon_{\min} + (\epsilon_{\max} - \epsilon_{\min})\,
-  \frac{1 + \cos\!\left(\pi \left(\tfrac{t}{T}\right)^k\right)}{2}
-\]
-L'agente supporta tre modalità via CLI: \texttt{sweep} (ottimizzazione Bayesiana
-degli iperparametri con WandB), \texttt{train} e \texttt{test}.
-I valori iniziali ottimistici della Q-table ($Q_0 = 2$) favoriscono
-l'esplorazione nelle fasi iniziali.
-
-\subsection{doorkey-shaping (\texttt{agent/doorkey\_shaping.py})}
-
-Estende il vanilla aggiungendo il \textbf{reward shaping potential-based} direttamente
-nel wrapper \texttt{DoorKeyProgressReward}. La funzione potenziale $\Phi(s)$ è
-calcolata tramite BFS sulla griglia, tenendo conto della sequenza di sotto-obiettivi
-e della presenza della chiave. Il fattore di scala dello shaping è un iperparametro
-incluso nello sweep Bayesiano, insieme a $\alpha$, $\gamma$, $\epsilon_{\min}$ e $k$.
-Il training prevede 50\,000 episodi (contro i 25\,000 del vanilla), con il modello
-salvato su disco per il test.
-
-\subsection{doorkey-DDQN (\texttt{agent/doorkey-DDQN.py})}
-
-Implementa un agente \textbf{Double DQN (DDQN) con Prioritized Experience Replay (PER)}.
-La rete neurale (\texttt{DualHeadDDQN}) ha due rami in ingresso:
+\subsection{Double DQN con PER (\texttt{agent/doorkey-DDQN.py})}
+L'agente Deep RL utilizza una rete \texttt{DualHeadDDQN} che elabora separatamente l'immagine della griglia (tramite \textit{Grid MLP}) e feature scalari quali direzione e progresso (tramite \textit{Scalar MLP}).
 \begin{itemize}
-    \item \textbf{Grid MLP} — processa i canali dell'osservazione immagine
-          normalizzati (tipo oggetto e stato porta) tramite 4 strati lineari con
-          \texttt{LayerNorm} e \texttt{ReLU};
-    \item \textbf{Scalar MLP} — processa 9 feature scalari: direzione agente
-          (one-hot 4 bit), fase corrente (one-hot 4 bit) e progresso continuo.
+    \item \textbf{Iperparametri}: Learning Rate $10^{-4}$, $\gamma=0.99$, Buffer Size $300\,000$.
+    \item \textbf{Frequenza di Decadimento Epsilon}: In questa architettura, il parametro $\epsilon$ (Epsilon Decay: $0.99997$) viene aggiornato al termine di ogni \textbf{episodio}. Ciò permette una stabilità maggiore durante lo svolgimento del singolo tentativo.
 \end{itemize}
-I due rami vengono concatenati e passati a un MLP finale che produce i Q-values.
-Il target network viene aggiornato con soft update ($\tau = 0{,}001$) ogni step
-o con hard copy ogni 4\,000 step. Il PER usa priorità proporzionali agli errori TD
-per campionare le esperienze più informative. Il training è tracciato su WandB con
-sweep Bayesiano degli iperparametri \texttt{lr}, \texttt{gamma}, \texttt{eps\_decay}.
 
-\subsection{doorkey-llm2 (\texttt{agent/doorkey-llm2.py})}
+\subsection{Q-Learning Tabellare (\texttt{agent/doorkey-reward-machines-wandb.py})}
+L'agente classico utilizza uno stato compresso $(\Delta x, \Delta y, d, \text{bin}, \text{stage})$ per mappare la posizione relativa dell'obiettivo.
+\begin{itemize}
+    \item \textbf{Iperparametri}: Alpha $\alpha=0.15$, $\gamma=0.99$.
+    \item \textbf{Frequenza di Decadimento Epsilon}: A differenza del modello Deep, qui il decadimento dell'epsilon (Epsilon Decay: $0.995$) avviene a ogni singolo \textbf{step}. Questa scelta accelera drasticamente il passaggio all'exploitation nelle prime fasi di apprendimento tabellare.
+\end{itemize}
+\newpage
+\section{Sperimentazione LLM e VLM}
+L'integrazione del \texttt{VLMDebugWrapper} permette di iniettare nel loop di RL un reward derivato dall'analisi dei frame o dello stato testuale.
 
-Combina Q-Learning tabellare con il reward fornito da \texttt{VLMDebugWrapper}.
-Lo stato è compresso in una tupla di cinque elementi
-$(\Delta x,\, \Delta y,\, d,\, \text{progress\_bin},\, \text{stage\_idx})$
-che codifica la distanza relativa all'obiettivo corrente, la direzione dell'agente,
-il progresso discretizzato e la fase. Per i primi 150 episodi il VLM viene ignorato
-(\texttt{ignore=True}) per permettere all'agente di esplorare liberamente; a seguire
-il reward VLM viene integrato nel loop di training. L'agente supporta
-valutazione finale e visualizzazione \texttt{human}.
+\subsection{Ingegnerizzazione del Prompt}
+Per forzare il modello a ragionare in modo analitico, è stato sviluppato un prompt strutturato che richiede un'analisi in 5 step (Target, Azione precedente, Analisi Spaziale, Stima del progresso, Calcolo del reward).
 
-%─────────────────────────────────────────────────────────────
-\section{Prototipi e Esperimenti (\texttt{prove/})}
+Il prompt descrive un sistema di valutazione per un agente intelligente operante in un ambiente \textit{GridWorld} 2D sconosciuto. L'agente dispone di un insieme limitato di azioni (rotazione sinistra/destra, avanzamento, raccolta, deposito e interazione con oggetti) e deve raggiungere un obiettivo finale rappresentato da una cella verde, superando eventuali ostacoli come porte chiuse che richiedono chiavi corrispondenti. Il sistema istruisce un modello linguistico ad agire come ``occhio e cervello'' dell'agente, seguendo una sequenza rigorosa di cinque passi analitici: identificazione del target corrente, valutazione dell'azione precedente, analisi spaziale e di orientamento, calcolo di una ricompensa numerica compresa nell'intervallo \([-1.0,\ 1.0]\) secondo criteri gerarchici predefiniti (da azione stupida a obiettivo finale raggiunto), e stima del progresso globale dell'agente nell'intervallo \([0.0,\ 100.0]\). Il risultato atteso è un output in formato XML strutturato, contenente il ragionamento nell'elemento \texttt{<analysis>} e le due metriche numeriche nell'elemento \texttt{<metrics>}, senza alcun testo aggiuntivo al di fuori di tali tag.
+\end{quote}
 
-\subsection{provaLLM (\texttt{prove/provaLLM.py})}
+\paragraph{Prompt leggibile nel file:}
+\begin{quote}
+    \texttt{/src/env/vlm\_wrapper.py }
+    
+\end{quote}
 
-Prototipo che pilota l'agente MiniGrid usando un LLM testuale remoto
-(API Groq, modello multimodale). La griglia viene convertita in CSV testuale
-e inviata al modello tramite due prompt alternativi (italiano e inglese).
-Il modello restituisce reward, progresso e, in una variante, anche le coordinate
-$(\Delta x, \Delta y)$ dell'obiettivo corrente, usando tag XML \texttt{<metrics>}
-e \texttt{<analysis>}. Il file contiene anche la struttura per un agente Q-Learning
-integrato con questo reward LLM.
 
-\subsection{provaVLM6 (\texttt{prove/provaVLM6.py})}
+\subsection{Prove LLM}
+Nelle prove puramente testuali, la griglia viene convertita in formato CSV. I modelli (Gpt-oss-120b, Qwen3.6-36b) hanno dimostrato di comprendere la gerarchia degli obiettivi (chiave prima della porta), ma faticano a percepire correttamente la direzione in cui l'agente è rivolto senza un feedback visivo diretto.
 
-Esperimento con LLM multimodale (Groq) che riceve una \textbf{sequenza di 5 frame
-visivi} concatenati orizzontalmente come singola immagine. Il modello deve analizzare
-la storia temporale per dedurre le regole dell'ambiente, identificare l'obiettivo
-intermedio e restituire il reward e il livello di completamento.
-Due prompt distinti gestiscono: (1) la selezione dell'azione successiva
-con giustificazione testuale; (2) la valutazione della performance con metriche
-numeriche.
+Il Prompt in questo caso è stato una versione molto simile a quello utilizzato con i modelli LLM modificato per far 
+comprendere le immagini input.
 
-\subsection{provaVLM2 (\texttt{prove/provaVLM2.py})}
+\subsection{Prove VLM: Il benchmark Qwen-27B}
+L'uso di modelli multimodali ha risolto le ambiguità spaziali. 
+\begin{itemize}
+    \item \textbf{Modelli Small (4B-14B)}: (es. \texttt{nemotron-3-nano}, \texttt{Qwen-vl-4b}) mostrano spesso allucinazioni sulla posizione degli oggetti o sull'orientamento.
+    \item \textbf{Qwen-27B}: Questo modello ha rappresentato il punto di svolta. È stato in grado di fornire risultati \textbf{decisamente soddisfacenti e coerenti}, identificando con precisione la relazione tra l'agente e il target, garantendo una valutazione del reward solida.
+\end{itemize}
 
-Prototipo analogo che usa il modello \textbf{Qwen3-VL-4B-Instruct} in locale
-tramite \texttt{transformers} e \texttt{torch.compile}. Riceve un singolo frame
-visivo renderizzato dell'ambiente MiniGrid, costruisce il messaggio nel formato
-atteso da Qwen-VL e chiede al modello di analizzare la scena e pianificare la
-sequenza di azioni per risolvere il livello. Il \texttt{VLMDebugWrapper} interno
-memorizza gli ultimi frame in una \texttt{deque} e interroga il modello ogni
-\texttt{query\_every} step.
+\section{Risultati e Riepilogo Visivo}
+I grafici estratti da Weights \& Biases evidenziano il successo del sistema di reward shaping.
 
-%─────────────────────────────────────────────────────────────
-\section{Riepilogo}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{"images/img1.png"}
+    \caption{Success Rate Q-Learning: Lo shaping permette la risoluzione di mappe $16\times16$ (verde scuro), altrimenti impossibili per la baseline (azzurro).}
+\end{figure}
 
-\begin{table}[h]
-\centering
-\small
-\begin{tabular}{llll}
-\toprule
-\textbf{File} & \textbf{Algoritmo} & \textbf{Reward} & \textbf{Modello} \\
-\midrule
-doorkey-vanilla    & Q-Learning tabellare & Sparso (env)       & — \\
-doorkey-shaping    & Q-Learning tabellare & Potential shaping  & — \\
-doorkey-DDQN       & DDQN + PER           & Sistema strutturato & Rete neurale \\
-doorkey-llm2       & Q-Learning + VLM     & LLM (Ollama/locale) & nemotron-3-nano \\
-reward-system      & Wrapper              & Denso multi-componente & — \\
-vlm\_wrapper       & Wrapper              & LLM testuale       & nemotron-3-nano \\
-provaLLM           & Prototipo Q+LLM      & LLM testuale remoto & Groq API \\
-provaVLM6          & Prototipo VLM        & LLM visivo remoto  & Groq multimodale \\
-provaVLM2          & Prototipo VLM        & VLM visivo locale  & Qwen3-VL-4B \\
-\bottomrule
-\end{tabular}
-\caption{Panoramica dei file del progetto.}
-\end{table}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{"images/img2.png"}
+    \caption{Success Rate DDQN 8x8: L'arancione mostra una convergenza rapida al 100\% grazie al reward denso.}
+\end{figure}
 
-Il progetto segue una progressione logica: si parte da una baseline Q-Learning
-(\textit{vanilla}), si aggiunge reward shaping (\textit{shaping}), si introduce
-una rete neurale profonda con memoria prioritizzata (\textit{DDQN}), e infine
-si sperimenta la sostituzione o integrazione del reward con giudizi espressi da
-modelli linguistici — prima via testo, poi via immagini — sia locali che remoti.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{"images/img3.png"}
+    \caption{Analisi comparativa finale: Dinamiche di convergenza estratte dai log WandB.}
+\end{figure}
+
+\subsection{Considerazioni Finali e Sviluppi Futuri}
+Nonostante le ottime prestazioni, esistono ampi margini di ottimizzazione nel fine-tuning degli iperparametri (dimensione del buffer e frequenza update). È importante sottolineare che, per questioni legate alle tempistiche computazionali e al tempo complessivo a disposizione, i training non sono stati protratti oltre un certo limite. Tuttavia, l'andamento delle curve suggerisce che \textbf{sessioni di addestramento più lunghe} porterebbero certamente a \textit{success rate} ancora più elevati e stabili, consolidando la policy vicino alla perfezione anche nelle configurazioni più complesse.
 
 \end{document}
