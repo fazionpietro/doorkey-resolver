@@ -210,9 +210,7 @@ class StripRewardWrapper(gym.RewardWrapper):
 
 def build_env(reward_config: RewardConfig, render_mode: str | None = None) -> any:
     env = make_env(reward_config=reward_config, render_mode=render_mode, size=5)
-    env = StripRewardWrapper(
-        env
-    )  # <-- Blocca totalmente il reward di base/RewardConfig
+    env = StripRewardWrapper(env)
     env = VLMDebugWrapper(env, query_every=10)
     return env
 

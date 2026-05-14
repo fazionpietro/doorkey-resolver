@@ -199,7 +199,7 @@ class VLMDebugWrapper(gym.Wrapper):
     def _generate_grid_csv(self, obs) -> str:
         from minigrid.minigrid_env import (
             MiniGridEnv,
-        )  # Assicurati di averlo importato in alto nel file
+        )
 
         grid = obs["image"]
         width, height, channels = grid.shape
@@ -299,7 +299,6 @@ class VLMDebugWrapper(gym.Wrapper):
             print(content)
 
             if match:
-                # Sostituiamo la virgola col punto per rendere float() felice
                 v1 = float(match.group(1).replace(",", "."))
                 v2 = float(match.group(2).replace(",", "."))
 

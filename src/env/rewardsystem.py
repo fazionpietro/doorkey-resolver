@@ -278,15 +278,11 @@ class DoorKeyRewardSystem(gym.Wrapper):
         if prev_stage is None or curr_stage is None:
             return 0.0
 
-        # 1. Regola aurea del PBRS: se terminated, potenziale futuro DEVE essere 0.
         if terminated:
             curr_potential = 0.0
         else:
             curr_potential = self._compute_stage_potential(curr_stage, curr_progress)
 
-        # 2. Spegni lo shaping durante il salto tra due fasi (Transition Drop).
-        # Evita penalità massicce false quando il progresso crolla da 1.0 a 0.0.
-        # L'agente verrà ricompensato esclusivamente dallo stage_bonus in questo step.
         if prev_stage != curr_stage:
             return 0.0
 
