@@ -1,2 +1,5 @@
 **/wandb/
 **/videos/
+
+src/doc/*
+!src/doc/*.tex

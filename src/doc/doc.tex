@@ -62,21 +62,18 @@ Il reward totale è calcolato come somma di componenti configurabili tramite \te
     \item \textbf{Penalità}: una penalità temporale costante per step e una penalità di regressione per il ritorno a fasi precedenti.
 \end{itemize}
 
-\section{Architetture degli Agenti e Iperparametri}
+\section{Architetture degli Agenti}
+\subsection{Q-Learning Tabellare (\texttt{agent/doorkey-reward-machines-wandb.py})}
+L'agente classico utilizza uno stato compresso $(\Delta x, \Delta y, d, \text{progress}, \text{stage})$ il quale fornisce all'agente osservazioni
+sulla sua posizione relativa al goal corrente, la sua direzione, il progresso (arrotondato secondo un dato numero di bin), 
+e il numero di stage corrente).
+
 
 \subsection{Double DQN con PER (\texttt{agent/doorkey-DDQN.py})}
-L'agente Deep RL utilizza una rete \texttt{DualHeadDDQN} che elabora separatamente l'immagine della griglia (tramite \textit{Grid MLP}) e feature scalari quali direzione e progresso (tramite \textit{Scalar MLP}).
-\begin{itemize}
-    \item \textbf{Iperparametri}: Learning Rate $10^{-4}$, $\gamma=0.99$, Buffer Size $300\,000$.
-    \item \textbf{Frequenza di Decadimento Epsilon}: In questa architettura, il parametro $\epsilon$ (Epsilon Decay: $0.99997$) viene aggiornato al termine di ogni \textbf{episodio}. Ciò permette una stabilità maggiore durante lo svolgimento del singolo tentativo.
-\end{itemize}
+L'agente Deep RL utilizza una rete \texttt{DualHeadDDQN} che elabora separatamente l'immagine della griglia (tramite \textit{Grid MLP}) e feature scalari quali direzione e progresso. La motivazione dietro a questo approccio era di dare valore alle feature scalari provenienti da \textit{rewardsystem.py} che se 
+aggiunte all'immagine dell'ambiente si sarebbero a mio avviso perse nei "pixel" dell'immagine linearizzata.
 
-\subsection{Q-Learning Tabellare (\texttt{agent/doorkey-reward-machines-wandb.py})}
-L'agente classico utilizza uno stato compresso $(\Delta x, \Delta y, d, \text{bin}, \text{stage})$ per mappare la posizione relativa dell'obiettivo.
-\begin{itemize}
-    \item \textbf{Iperparametri}: Alpha $\alpha=0.15$, $\gamma=0.99$.
-    \item \textbf{Frequenza di Decadimento Epsilon}: A differenza del modello Deep, qui il decadimento dell'epsilon (Epsilon Decay: $0.995$) avviene a ogni singolo \textbf{step}. Questa scelta accelera drasticamente il passaggio all'exploitation nelle prime fasi di apprendimento tabellare.
-\end{itemize}
+
 \newpage
 \section{Sperimentazione LLM e VLM}
 L'integrazione del \texttt{VLMDebugWrapper} permette di iniettare nel loop di RL un reward derivato dall'analisi dei frame o dello stato testuale.
@@ -104,11 +101,11 @@ comprendere le immagini input.
 L'uso di modelli multimodali ha risolto le ambiguità spaziali. 
 \begin{itemize}
     \item \textbf{Modelli Small (4B-14B)}: (es. \texttt{nemotron-3-nano}, \texttt{Qwen-vl-4b}) mostrano spesso allucinazioni sulla posizione degli oggetti o sull'orientamento.
-    \item \textbf{Qwen-27B}: Questo modello ha rappresentato il punto di svolta. È stato in grado di fornire risultati \textbf{decisamente soddisfacenti e coerenti}, identificando con precisione la relazione tra l'agente e il target, garantendo una valutazione del reward solida.
+    \item \textbf{Qwen-27B}: Questo modello ha rappresentato il punto di svolta. È stato in grado di fornire risultati \textbf{decisamente soddisfacenti e coerenti}, identificando con precisione la relazione tra l'agente e il target, garantendo una valutazione del reward ababstanza solida, nonostante ogni tanto, a causa forse della risoluzione dell'immagine, sbagliasse a riconoscere il colore della chiave.
 \end{itemize}
 
 \section{Risultati e Riepilogo Visivo}
-I grafici estratti da Weights \& Biases evidenziano il successo del sistema di reward shaping.
+I grafici estratti da Weights \& Biases evidenziano il successo del sistema di reward shaping, confrontando l'allenamento dell'agente con la reward densa e senza (lasciandosolo le osservazioni).
 
 \begin{figure}[H]
     \centering
@@ -119,7 +116,7 @@ I grafici estratti da Weights \& Biases evidenziano il successo del sistema di r
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.85\textwidth]{"images/img2.png"}
-    \caption{Success Rate DDQN 8x8: L'arancione mostra una convergenza rapida al 100\% grazie al reward denso.}
+    \caption{Success Rate DDQN 8x8: L'arancione mostra una convergenza rapida al 90\% grazie al reward denso.}
 \end{figure}
 
 \begin{figure}[H]
