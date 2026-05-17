@@ -4,7 +4,6 @@
 
 \usepackage[T1]{fontenc}
 \usepackage{lmodern}
-\usepackage[italian]{babel}
 \usepackage{geometry}
 \usepackage{hyperref}
 \usepackage{booktabs}
@@ -34,6 +33,7 @@
     urlcolor=blue!60!black,
 }
 
+% IL PROBLEMA ERA QUI: \titrule è stato corretto in \titlerule
 \titleformat{\section}{\large\bfseries}{}{0em}{}[\titlerule]
 \titleformat{\subsection}{\normalsize\bfseries\itshape}{}{0em}{}
 
@@ -64,14 +64,11 @@ Il reward totale è calcolato come somma di componenti configurabili tramite \te
 
 \section{Architetture degli Agenti}
 \subsection{Q-Learning Tabellare (\texttt{agent/doorkey-reward-machines-wandb.py})}
-L'agente classico utilizza uno stato compresso $(\Delta x, \Delta y, d, \text{progress}, \text{stage})$ il quale fornisce all'agente osservazioni
-sulla sua posizione relativa al goal corrente, la sua direzione, il progresso (arrotondato secondo un dato numero di bin), 
-e il numero di stage corrente).
+L'agente classico utilizza uno stato compresso $(\Delta x, \Delta y, d, \text{progress}, \text{stage})$ il quale fornisce all'agente osservazioni sulla sua posizione relativa al goal corrente, la sua direzione, il progresso (arrotondato secondo un dato numero di bin), e il numero di stage corrente.
 
 
 \subsection{Double DQN con PER (\texttt{agent/doorkey-DDQN.py})}
-L'agente Deep RL utilizza una rete \texttt{DualHeadDDQN} che elabora separatamente l'immagine della griglia (tramite \textit{Grid MLP}) e feature scalari quali direzione e progresso. La motivazione dietro a questo approccio era di dare valore alle feature scalari provenienti da \textit{rewardsystem.py} che se 
-aggiunte all'immagine dell'ambiente si sarebbero a mio avviso perse nei "pixel" dell'immagine linearizzata.
+L'agente Deep RL utilizza una rete \texttt{DualHeadDDQN} che elabora separatamente l'immagine della griglia (tramite \textit{Grid MLP}) e feature scalari quali direzione e progresso. La motivazione dietro a questo approccio era di dare valore alle feature scalari provenienti da \textit{rewardsystem.py} che se aggiunte all'immagine dell'ambiente si sarebbero a mio avviso perse nei "pixel" dell'immagine linearizzata.
 
 
 \newpage
@@ -81,47 +78,46 @@ L'integrazione del \texttt{VLMDebugWrapper} permette di iniettare nel loop di RL
 \subsection{Ingegnerizzazione del Prompt}
 Per forzare il modello a ragionare in modo analitico, è stato sviluppato un prompt strutturato che richiede un'analisi in 5 step (Target, Azione precedente, Analisi Spaziale, Stima del progresso, Calcolo del reward).
 
-Il prompt descrive un sistema di valutazione per un agente intelligente operante in un ambiente \textit{GridWorld} 2D sconosciuto. L'agente dispone di un insieme limitato di azioni (rotazione sinistra/destra, avanzamento, raccolta, deposito e interazione con oggetti) e deve raggiungere un obiettivo finale rappresentato da una cella verde, superando eventuali ostacoli come porte chiuse che richiedono chiavi corrispondenti. Il sistema istruisce un modello linguistico ad agire come ``occhio e cervello'' dell'agente, seguendo una sequenza rigorosa di cinque passi analitici: identificazione del target corrente, valutazione dell'azione precedente, analisi spaziale e di orientamento, calcolo di una ricompensa numerica compresa nell'intervallo \([-1.0,\ 1.0]\) secondo criteri gerarchici predefiniti (da azione stupida a obiettivo finale raggiunto), e stima del progresso globale dell'agente nell'intervallo \([0.0,\ 100.0]\). Il risultato atteso è un output in formato XML strutturato, contenente il ragionamento nell'elemento \texttt{<analysis>} e le due metriche numeriche nell'elemento \texttt{<metrics>}, senza alcun testo aggiuntivo al di fuori di tali tag.
+\begin{quote}
+Il prompt descrive un sistema di valutazione per un agente intelligente operante in un ambiente \textit{GridWorld} 2D sconosciuto. L'agente dispone di un insieme limitato di azioni (rotazione sinistra/destra, avanzamento, raccolta, deposito e interazione con oggetti) e deve raggiungere un obiettivo finale rappresentato da una cella verde, superando eventuali ostacoli come porte chiuse che richiedono chiavi corrispondenti. Il sistema istruisce un modello linguistico ad agire come ``occhio e cervello'' dell'agente, seguendo una sequenza rigorosa di cinque passi analitici: identificazione del target corrente, valutazione dell'azione precedente, analisi spaziale e di orientamento, calcolo di una ricompensa numerica compresa nell'intervallo $[-1.0, 1.0]$ secondo criteri gerarchici predefiniti (da azione stupida a obiettivo finale raggiunto), e stima del progresso globale dell'agente nell'intervallo $[0.0, 100.0]$. Il risultato atteso è un output in formato XML strutturato, contenente il ragionamento nell'elemento \texttt{<analysis>} e le due metriche numeriche nell'elemento \texttt{<metrics>}, senza alcun testo aggiuntivo al di fuori di tali tag.
 \end{quote}
 
 \paragraph{Prompt leggibile nel file:}
 \begin{quote}
-    \texttt{/src/env/vlm\_wrapper.py }
-    
+    \texttt{/src/env/vlm\_wrapper.py}
 \end{quote}
 
 
 \subsection{Prove LLM}
 Nelle prove puramente testuali, la griglia viene convertita in formato CSV. I modelli (Gpt-oss-120b, Qwen3.6-36b) hanno dimostrato di comprendere la gerarchia degli obiettivi (chiave prima della porta), ma faticano a percepire correttamente la direzione in cui l'agente è rivolto senza un feedback visivo diretto.
 
-Il Prompt in questo caso è stato una versione molto simile a quello utilizzato con i modelli LLM modificato per far 
-comprendere le immagini input.
+Il Prompt in questo caso è stato una versione molto simile a quello utilizzato con i modelli LLM modificato per far comprendere le immagini input.
 
 \subsection{Prove VLM: Il benchmark Qwen-27B}
 L'uso di modelli multimodali ha risolto le ambiguità spaziali. 
 \begin{itemize}
     \item \textbf{Modelli Small (4B-14B)}: (es. \texttt{nemotron-3-nano}, \texttt{Qwen-vl-4b}) mostrano spesso allucinazioni sulla posizione degli oggetti o sull'orientamento.
-    \item \textbf{Qwen-27B}: Questo modello ha rappresentato il punto di svolta. È stato in grado di fornire risultati \textbf{decisamente soddisfacenti e coerenti}, identificando con precisione la relazione tra l'agente e il target, garantendo una valutazione del reward ababstanza solida, nonostante ogni tanto, a causa forse della risoluzione dell'immagine, sbagliasse a riconoscere il colore della chiave.
+    \item \textbf{Qwen-27B}: Questo modello ha rappresentato il punto di svolta. È stato in grado di fornire risultati \textbf{decisamente soddisfacenti e coerenti}, identificando con precisione la relazione tra l'agente e il target, garantendo una valutazione del reward abbastanza solida, nonostante ogni tanto, a causa forse della risoluzione dell'immagine, sbagliasse a riconoscere il colore della chiave.
 \end{itemize}
 
 \section{Risultati e Riepilogo Visivo}
-I grafici estratti da Weights \& Biases evidenziano il successo del sistema di reward shaping, confrontando l'allenamento dell'agente con la reward densa e senza (lasciandosolo le osservazioni).
+I grafici estratti da Weights \& Biases evidenziano il successo del sistema di reward shaping, confrontando l'allenamento dell'agente con la reward densa e senza (lasciandogli solo le osservazioni).
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.85\textwidth]{"images/img1.png"}
+    \includegraphics[width=0.85\textwidth]{images/img1.png}
     \caption{Success Rate Q-Learning: Lo shaping permette la risoluzione di mappe $16\times16$ (verde scuro), altrimenti impossibili per la baseline (azzurro).}
 \end{figure}
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.85\textwidth]{"images/img2.png"}
+    \includegraphics[width=0.85\textwidth]{images/img2.png}
     \caption{Success Rate DDQN 8x8: L'arancione mostra una convergenza rapida al 90\% grazie al reward denso.}
 \end{figure}
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.85\textwidth]{"images/img3.png"}
+    \includegraphics[width=0.85\textwidth]{images/img3.png}
     \caption{Analisi comparativa finale: Dinamiche di convergenza estratte dai log WandB.}
 \end{figure}
 
