@@ -69,7 +69,7 @@ class RewardBreakdown:
 
 
 # ─────────────────────────────────────────────
-# Wrapper principale V2
+# Wrapper principale
 # ─────────────────────────────────────────────
 class DoorKeyRewardSystem(gym.Wrapper):
     def __init__(self, env: gym.Env, config: RewardConfig):
@@ -82,8 +82,8 @@ class DoorKeyRewardSystem(gym.Wrapper):
         self.prev_stage: Stage | None = None
         self.curr_stage: Stage | None = None
 
-        self.prev_stage_potential: float = 0.0
-        self.curr_stage_potential: float = 0.0
+        self.prev_progress: float = 0.0
+        self.curr_progress: float = 0.0
 
         self.key_pos: tuple[int, int] | None = None
         self.door_pos: tuple[int, int] | None = None
@@ -91,15 +91,6 @@ class DoorKeyRewardSystem(gym.Wrapper):
 
         self.stage_ref_distances: dict[Stage, int] = {}
         self.completed_milestones: set[str] = set()
-
-        # Le 3 tabelle precalcolate (progresso da 1.0 a 0.0)
-        self.table_key: dict[tuple[int, int], float] = {}
-        self.table_door: dict[tuple[int, int], float] = {}
-        self.table_goal: dict[tuple[int, int], float] = {}
-
-        self.max_dist_key: int = 1
-        self.max_dist_door: int = 1
-        self.max_dist_goal: int = 1
 
     def reset(self, **kwargs):
         obs, info = self.env.reset(**kwargs)
@@ -112,29 +103,28 @@ class DoorKeyRewardSystem(gym.Wrapper):
         self.door_pos = self._find_stage_goal_position("door")
         self.goal_pos = self._find_stage_goal_position("goal")
 
-        # Calcolo tabelle progresso (progresso 1.0 = sull'oggetto, 0.0 = massimo allontanamento)
-        self.table_key, self.max_dist_key = self._compute_table_and_max(self.key_pos)
-        self.table_door, self.max_dist_door = self._compute_table_and_max(self.door_pos)
-        self.table_goal, self.max_dist_goal = self._compute_table_and_max(
-            self.goal_pos, ignore_closed_door=True
-        )
-
-        # Calcolo delle distanze di riferimento iniziali per le fasi usando le tabelle!
-        d_start_to_key = self._get_distance(agent_start, Stage.NO_KEY)
-        d_key_to_door = self._get_distance(self.key_pos, Stage.HAS_KEY)
-        d_door_to_goal = self._get_distance(self.door_pos, Stage.DOOR_OPEN)
+        self._dist_to_key = self._bfs_full_map(self.key_pos)
+        self._dist_to_door = self._bfs_full_map(self.door_pos)
+        self._dist_to_goal = self._bfs_full_map(self.goal_pos, ignore_closed_door=True)
 
         self.stage_ref_distances = {
-            Stage.NO_KEY: max(1, d_start_to_key),
-            Stage.HAS_KEY: max(1, d_key_to_door),
-            Stage.DOOR_OPEN: max(1, d_door_to_goal),
+            Stage.NO_KEY: max(1, self._bfs_distance(agent_start, self.key_pos)),
+            Stage.HAS_KEY: max(1, self._bfs_distance(self.key_pos, self.door_pos)),
+            Stage.DOOR_OPEN: max(
+                1,
+                self._bfs_distance(
+                    self.door_pos,
+                    self.goal_pos,
+                    ignore_closed_door=True,
+                ),
+            ),
             Stage.GOAL_REACHED: 1,
         }
 
         self.curr_events = self._extract_events()
         self.curr_stage = self._infer_stage(self.curr_events)
-        self.curr_stage_potential = self._compute_stage_potential(self.curr_stage)
-        self.prev_stage_potential = self.curr_stage_potential
+        self.curr_progress = self._compute_stage_progress(self.curr_stage)
+        self.prev_progress = self.curr_progress
 
         return obs, info
 
@@ -146,7 +136,7 @@ class DoorKeyRewardSystem(gym.Wrapper):
 
         self.prev_events = self.curr_events
         self.prev_stage = self.curr_stage
-        self.prev_stage_potential = self.curr_stage_potential
+        self.prev_progress = self.curr_progress
 
         obs, env_reward, terminated, truncated, info = self.env.step(action)
 
@@ -162,28 +152,18 @@ class DoorKeyRewardSystem(gym.Wrapper):
         if "lost_key" in regressions:
             try:
                 self.key_pos = self._find_stage_goal_position("key")
-                self.table_key, self.max_dist_key = self._compute_table_and_max(
-                    self.key_pos
-                )
-
-                # Ricalcolo dinamico della ref_dist in modo che riparta pulito
-                base_env = self._get_base_env()
-                agent_pos = tuple(base_env.agent_pos)
-                dist = float(self._get_distance(agent_pos, Stage.NO_KEY))
-                if dist == 1.0 and tuple(base_env.front_pos) == self.key_pos:
-                    dist = 0.5
-                self.stage_ref_distances[Stage.NO_KEY] = max(1.0, dist)
+                self._dist_to_key = self._bfs_full_map(self.key_pos)
             except RuntimeError:
                 pass
 
         if self.prev_stage != Stage.DOOR_OPEN and self.curr_stage == Stage.DOOR_OPEN:
             if self.goal_pos is None:
                 raise RuntimeError("goal_pos is None: reset() was not called.")
-            self.table_goal, self.max_dist_goal = self._compute_table_and_max(
+            self._dist_to_goal = self._bfs_full_map(
                 self.goal_pos, ignore_closed_door=False
             )
 
-        self.curr_stage_potential = self._compute_stage_potential(self.curr_stage)
+        self.curr_progress = self._compute_stage_progress(self.curr_stage)
 
         reward_parts = RewardBreakdown(
             env_reward=float(env_reward),
@@ -191,8 +171,8 @@ class DoorKeyRewardSystem(gym.Wrapper):
             progress_shaping=self._compute_progress_shaping(
                 self.prev_stage,
                 self.curr_stage,
-                self.prev_stage_potential,
-                self.curr_stage_potential,
+                self.prev_progress,
+                self.curr_progress,
                 terminated,
             ),
             regression_penalty=self._compute_regression_penalty(regressions),
@@ -208,21 +188,14 @@ class DoorKeyRewardSystem(gym.Wrapper):
         self.curr_events = None
         self.prev_stage = None
         self.curr_stage = None
-        self.prev_stage_potential = 0.0
-        self.curr_stage_potential = 0.0
+        self.prev_progress = 0.0
+        self.curr_progress = 0.0
 
         self.key_pos = None
         self.door_pos = None
         self.goal_pos = None
         self.stage_ref_distances = {}
         self.completed_milestones.clear()
-
-        self.table_key = {}
-        self.table_door = {}
-        self.table_goal = {}
-        self.max_dist_key = 1
-        self.max_dist_door = 1
-        self.max_dist_goal = 1
 
     def _get_base_env(self) -> MiniGridEnv:
         return cast(MiniGridEnv, self.env.unwrapped)
@@ -269,143 +242,53 @@ class DoorKeyRewardSystem(gym.Wrapper):
             regressions.add("closed_door")
         return regressions
 
-    def _compute_table_and_max(
-        self, goal: tuple[int, int], ignore_closed_door: bool = False
-    ) -> tuple[dict[tuple[int, int], float], int]:
-        """
-        Calcola tramite BFS la distanza da 'goal' per tutte le celle.
-        Restituisce la tabella con i progressi normalizzati tra 0.0 (lontano) e 1.0 (sul goal),
-        insieme alla distanza massima, in modo da poter denormalizzare e riottenere le distanze.
-        """
-        base_env = self._get_base_env()
-        grid = base_env.grid
-        dist_map: dict[tuple[int, int], int] = {}
-        q: deque = deque([(goal[0], goal[1], 0)])
-        dist_map[goal] = 0
-
-        while q:
-            x, y, d = q.popleft()
-            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-                nx, ny = x + dx, y + dy
-                pos = (nx, ny)
-                if pos in dist_map:
-                    continue
-                if not (0 <= nx < grid.width and 0 <= ny < grid.height):
-                    continue
-
-                cell = grid.get(nx, ny)
-                blocked = False
-                if cell is not None:
-                    if cell.type == "wall":
-                        blocked = True
-                    elif cell.type == "door":
-                        is_open = bool(getattr(cell, "is_open", False))
-                        if not is_open and not ignore_closed_door:
-                            blocked = True
-
-                if blocked:
-                    continue
-
-                dist_map[pos] = d + 1
-                q.append((nx, ny, d + 1))
-
-        if not dist_map:
-            return {}, 1
-
-        val_min = 0  # distance at goal is always 0
-        val_max = max(dist_map.values())
-        if val_max == 0:
-            val_max = 1
-
-        normalized: dict[tuple[int, int], float] = {}
-        for pos, d in dist_map.items():
-            norm_inverted = 1.0 - (d / val_max)
-            normalized[pos] = round(norm_inverted, 3)
-
-        return normalized, val_max
-
-    def _get_distance(self, pos: tuple[int, int], stage: Stage) -> int:
-        """
-        De-normalizza il progresso estratto dalla tabella della fase per restituire la
-        distanza reale calcolata col BFS originario, nascondendo il fatto che
-        deriva da una tabella.
-        """
-        if stage == Stage.NO_KEY:
-            table = self.table_key
-            max_dist = self.max_dist_key
-        elif stage == Stage.HAS_KEY:
-            table = self.table_door
-            max_dist = self.max_dist_door
-        elif stage == Stage.DOOR_OPEN:
-            table = self.table_goal
-            max_dist = self.max_dist_goal
-        else:
-            return 0
-
-        progress_val = table.get(pos, 0.0)
-        return round((1.0 - progress_val) * max_dist)
-
-    def _compute_stage_potential(self, stage: Stage) -> float:
-        """
-        Bilanciamento Step-Reward: calcola il potenziale usando il massimo assoluto
-        di tutta la mappa (global_max_dist). In questo modo, OGNI singolo passo verso
-        l'obiettivo darà la STESSA identica porzione di reward, indipendentemente
-        da quanto sia lungo o corto lo stage corrente.
-        """
-        if stage == Stage.GOAL_REACHED:
-            return 1.0
-
+    def _compute_stage_progress(self, stage: Stage) -> float:
         base_env = self._get_base_env()
         agent_pos = tuple(base_env.agent_pos)
 
-        current_dist = float(self._get_distance(agent_pos, stage))
+        if stage == Stage.GOAL_REACHED:
+            return 1.0
+        elif stage == Stage.NO_KEY:
+            return self._dist_to_key.get(agent_pos, 0.0)
+        elif stage == Stage.HAS_KEY:
+            return self._dist_to_door.get(agent_pos, 0.0)
+        elif stage == Stage.DOOR_OPEN:
+            return self._dist_to_goal.get(agent_pos, 0.0)
+        return 0.0
 
-        # Consapevolezza Direzionale: se adiacente, controlla se guarda l'oggetto
-        if current_dist == 1.0:
-            goal_pos = None
-            if stage == Stage.NO_KEY:
-                goal_pos = self.key_pos
-            elif stage == Stage.HAS_KEY:
-                goal_pos = self.door_pos
-            elif stage == Stage.DOOR_OPEN:
-                goal_pos = self.goal_pos
-
-            if goal_pos and tuple(base_env.front_pos) == goal_pos:
-                current_dist = 0.5
-
-        global_max_dist = float(
-            max(self.max_dist_key, self.max_dist_door, self.max_dist_goal)
-        )
-        if global_max_dist == 0:
-            global_max_dist = 1.0
-
-        return 1.0 - (current_dist / global_max_dist)
+    def _compute_stage_potential(self, stage: Stage, stage_progress: float) -> float:
+        """
+        [FIX CRITICO] Prevenzione del "Gamma Bleed" e disaccoppiamento fasi.
+        Ora il potenziale resta SEMPRE confinato in [0, 1]. Non sommiamo più l'indice
+        della fase, azzerando le penalità incontrollabili nelle fasi avanzate.
+        """
+        return stage_progress
 
     def _compute_progress_shaping(
         self,
         prev_stage: Stage | None,
         curr_stage: Stage | None,
-        prev_potential: float,
-        curr_potential: float,
+        prev_progress: float,
+        curr_progress: float,
         terminated: bool,
     ) -> float:
+        """
+        [FIX CRITICI] Risolto il Transition Drop e aggiunto il supporto a terminated.
+        """
         if prev_stage is None or curr_stage is None:
             return 0.0
 
         if terminated:
-            curr_pot = 0.0
+            curr_potential = 0.0
         else:
-            curr_pot = curr_potential
+            curr_potential = self._compute_stage_potential(curr_stage, curr_progress)
 
         if prev_stage != curr_stage:
             return 0.0
 
-        # Se il potenziale non cambia (es. rotazione sul posto),
-        # restituiamo 0.0 per evitare il "gamma bleed".
-        if abs(curr_pot - prev_potential) < 1e-6:
-            return 0.0
+        prev_potential = self._compute_stage_potential(prev_stage, prev_progress)
 
-        delta = self.config.gamma * curr_pot - prev_potential
+        delta = self.config.gamma * curr_potential - prev_potential
         return delta * self.config.shaping_scale
 
     def _compute_stage_bonus(self, milestones: set[str]) -> float:
@@ -436,43 +319,6 @@ class DoorKeyRewardSystem(gym.Wrapper):
             penalty += self.config.regression_penalty
         return penalty
 
-    def _compute_global_progress(self) -> float:
-        """
-        Sfrutta le tabelle di progresso (de-normalizzando) per calcolare
-        il progresso esatto lungo l'intero percorso ideale dell'episodio,
-        usando le distanze massime (assolute) invece che la posizione iniziale.
-        """
-        if self.curr_stage is None:
-            return 0.0
-        if self.curr_stage == Stage.GOAL_REACHED:
-            return 1.0
-
-        base_env = self._get_base_env()
-        agent_pos = tuple(base_env.agent_pos)
-
-        # Usiamo le distanze massime possibili dell'ambiente
-        D_k = self.max_dist_key
-        D_d = self.max_dist_door
-        D_g = self.max_dist_goal
-
-        total_dist = D_k + D_d + D_g
-        if total_dist == 0:
-            return 1.0
-
-        curr_dist = self._get_distance(agent_pos, self.curr_stage)
-
-        if self.curr_stage == Stage.NO_KEY:
-            remaining = curr_dist + D_d + D_g
-        elif self.curr_stage == Stage.HAS_KEY:
-            remaining = curr_dist + D_g
-        elif self.curr_stage == Stage.DOOR_OPEN:
-            remaining = curr_dist
-        else:
-            remaining = 0
-
-        progress = 1.0 - (remaining / total_dist)
-        return max(0.0, min(1.0, progress))
-
     def _augment_info(
         self,
         info: dict[str, Any],
@@ -482,7 +328,7 @@ class DoorKeyRewardSystem(gym.Wrapper):
     ) -> dict[str, Any]:
         info = dict(info)
         info["stage"] = self.curr_stage.value if self.curr_stage is not None else None
-        info["completion"] = self._compute_global_progress()
+        info["completion"] = self._completion_percentage()
         info["events"] = {
             "has_key": (
                 self.curr_events.has_key if self.curr_events is not None else False
@@ -497,7 +343,7 @@ class DoorKeyRewardSystem(gym.Wrapper):
         info["milestones"] = sorted(milestones)
         info["regressions"] = sorted(regressions)
         info["completed_milestones"] = sorted(self.completed_milestones)
-        info["stage_progress"] = self.curr_stage_potential
+        info["stage_progress"] = self.curr_progress
 
         info["reward_breakdown"] = {
             "env_reward": reward_parts.env_reward,
@@ -518,3 +364,112 @@ class DoorKeyRewardSystem(gym.Wrapper):
                 if obj is not None and obj.type == goal:
                     return (x, y)
         raise RuntimeError(goal + " not found in the grid")
+
+    def _bfs_distance(
+        self,
+        start: tuple[int, int],
+        goal: tuple[int, int],
+        *,
+        ignore_closed_door: bool = False,
+    ) -> int:
+        if start == goal:
+            return 0
+        base_env = self._get_base_env()
+        grid = base_env.grid
+        width, height = grid.width, grid.height
+        q = deque([(start[0], start[1], 0)])
+        visited = {start}
+
+        while q:
+            x, y, dist = q.popleft()
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                nx, ny = x + dx, y + dy
+                pos = (nx, ny)
+
+                if not (0 <= nx < width and 0 <= ny < height):
+                    continue
+                if pos in visited:
+                    continue
+                if pos == goal:
+                    return dist + 1
+
+                cell = grid.get(nx, ny)
+                blocked = False
+                if cell is not None:
+                    if cell.type == "wall":
+                        blocked = True
+                    elif cell.type == "door":
+                        is_open = bool(getattr(cell, "is_open", False))
+                        if not is_open and not ignore_closed_door:
+                            blocked = True
+
+                if blocked:
+                    continue
+
+                visited.add(pos)
+                q.append((nx, ny, dist + 1))
+
+        return 10**9
+
+    def _bfs_full_map(
+        self, goal: tuple[int, int], *, ignore_closed_door: bool = False
+    ) -> dict[tuple, float]:
+        base_env = self._get_base_env()
+        grid = base_env.grid
+        dist_map: dict[tuple, int] = {}
+        q: deque = deque([(goal[0], goal[1], 0)])
+        dist_map[goal] = 0
+
+        while q:
+            x, y, d = q.popleft()
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                nx, ny = x + dx, y + dy
+                pos = (nx, ny)
+                if pos in dist_map:
+                    continue
+                if not (0 <= nx < grid.width and 0 <= ny < grid.height):
+                    continue
+
+                cell = grid.get(nx, ny)
+                blocked = False
+                if cell is not None:
+                    if cell.type == "wall":
+                        blocked = True
+                    elif cell.type == "door":
+                        is_open = bool(getattr(cell, "is_open", False))
+                        if not is_open and not ignore_closed_door:
+                            blocked = True
+
+                if blocked:
+                    continue
+
+                dist_map[pos] = d + 1
+                q.append((nx, ny, d + 1))
+
+        if not dist_map:
+            return {}
+
+        val_min = min(dist_map.values())
+        val_max = max(dist_map.values())
+
+        normalized: dict[tuple, float] = {}
+        for pos, d in dist_map.items():
+            if val_max > val_min:
+                norm_inverted = 1.0 - (d - val_min) / (val_max - val_min)
+            else:
+                norm_inverted = 1.0
+            normalized[pos] = round(norm_inverted, 3)
+
+        return normalized
+
+    def _completion_percentage(self) -> float:
+        if self.curr_stage is None:
+            return 0.0
+        stage_index = {
+            Stage.NO_KEY: 0,
+            Stage.HAS_KEY: 1,
+            Stage.DOOR_OPEN: 2,
+            Stage.GOAL_REACHED: 3,
+        }[self.curr_stage]
+        n_stages = 4
+        return min(1.0, (stage_index + self.curr_progress) / n_stages)

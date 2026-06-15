@@ -27,7 +27,7 @@ class StateEncoder:
         d = base.agent_dir
 
         stage = env.get_wrapper_attr("curr_stage")
-        curr_progress = env.curr_progress
+        curr_progress = info.get("stage_progress", 0.0)
         progress_bin = int(curr_progress * (10 - 1))
 
         stage_name = stage.value if stage is not None else "no_key"
@@ -307,7 +307,7 @@ def main():
 
     print(f"Creazione ambiente DoorKey 6x6...")
     cfg = RewardConfig()
-    env = make_env(reward_config=cfg)
+    env = make_env(reward_config=cfg, size=16)
     n_actions = int(cast(Discrete, env.action_space).n)
 
     encoder = StateEncoder()
@@ -329,63 +329,6 @@ def main():
 
     env.close()
     wandb.finish()
-
-    print("\n" + "=" * 40)
-    print("Avvio test visivo dell'agente addestrato!")
-    print("=" * 40)
-
-    env_vis = make_env(render_mode="human", reward_config=cfg)
-    test_episodes = 10
-
-    for ep in range(test_episodes):
-        obs, info = env_vis.reset()
-        state = encoder.encode(env_vis, info)
-        done = False
-        rewards = 0
-
-        print(f"Episodio visivo {ep + 1}/{test_episodes} in corso...")
-
-        prev_stage = None
-        step_num = 0
-
-        while not done and step_num < 300:
-            action = agent.act(state)
-            obs, reward, terminated, truncated, info = env_vis.step(action)
-            state = encoder.encode(env_vis, info)
-            done = terminated or truncated
-            step_num += 1
-            rewards += reward
-
-            # --- Progresso per stage ---
-            curr_stage = info.get("stage", "?")
-            completion = info.get("completion", 0.0)  # 0.0–1.0 globale
-            curr_progress = env_vis.get_wrapper_attr("curr_progress")
-            stage_labels = {
-                "no_key": "1/4 - Raccogli la chiave",
-                "has_key": "2/4 - Apri la porta",
-                "door_open": "3/4 - Raggiungi il goal",
-                "goal_reached": "4/4 - Goal raggiunto!  ✓",
-            }
-            label = stage_labels.get(curr_stage, curr_stage)
-
-            bar_len = 20
-            filled = int(curr_progress * bar_len)
-            bar = "█" * filled + "░" * (bar_len - filled)
-            print(
-                f"  step {step_num:3d} | reward: {rewards:3f} | Stage: {label:35s} "
-                f"| Progresso stage: [{bar}] {curr_progress*100:5.1f}% "
-                f"| Completamento: {completion*100:5.1f}%"
-            )
-            prev_stage = curr_stage
-
-            time.sleep(0.15)
-
-        print(
-            f"  → Episodio terminato in {step_num} step. Stage finale: {info.get('stage', '?')}\n"
-        )
-        time.sleep(1.0)
-
-    env_vis.close()
 
 
 if __name__ == "__main__":

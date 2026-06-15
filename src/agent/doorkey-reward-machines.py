@@ -41,7 +41,7 @@ class StateEncoder:
 
         # Recupera la fase corrente e il progresso dal wrapper
         stage = env.get_wrapper_attr("curr_stage")
-        curr_progress = env.curr_progress
+        curr_progress = info.get("stage_progress", 0.0)
         # Quantizza il progresso continuo [0, 1] in 10 bin discreti
         progress_bin = int(curr_progress * 9)
 

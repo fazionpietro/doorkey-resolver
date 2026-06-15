@@ -14,7 +14,7 @@ def debug_rewardsystem():
     config = RewardConfig()
 
     # Inizializziamo l'ambiente MiniGrid DoorKey (render_mode="human" per mostrare la finestra visiva)
-    base_env = gym.make("MiniGrid-DoorKey-8x8-v0", render_mode="human")
+    base_env = gym.make("MiniGrid-DoorKey-6x6-v0", render_mode="human")
 
     # Applichiamo il nostro wrapper
     env = DoorKeyRewardSystem(base_env, config)
@@ -32,7 +32,7 @@ def debug_rewardsystem():
         print(f"  {stage}: {dist}")
 
     print(f"\nStage Corrente: {env.curr_stage}")
-    print(f"Progresso Corrente: {env.curr_progress:.4f}")
+    print(f"Progresso Corrente: {env.curr_stage_potential:.4f}")
 
     ACTION_NAMES = {
         0: "LEFT",
@@ -101,10 +101,10 @@ def debug_rewardsystem():
                     print(f"Stage Dedotto (_infer_stage): {env.curr_stage}")
 
                     print(
-                        f"Progresso Stage Calcolato (_compute_stage_progress): {env.curr_progress:.4f}"
+                        f"Progresso Stage Calcolato (_compute_stage_potential): {env.curr_stage_potential:.4f}"
                     )
                     print(
-                        f"Variazione Progresso (_compute_progress_shaping): da {env.prev_progress:.4f} a {env.curr_progress:.4f}"
+                        f"Variazione Progresso (_compute_progress_shaping): da {env.prev_stage_potential:.4f} a {env.curr_stage_potential:.4f}"
                     )
 
                     milestones = info.get("milestones", [])
