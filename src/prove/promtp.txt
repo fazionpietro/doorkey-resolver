@@ -1,0 +1,23 @@
+/home/pietro/Documenti/doorkey/src/prove/reward_subset_300.csv 
+leggi il file. dopodiche guarda al documentazione https://minigrid.farama.org/environments/minigrid/DoorKeyEnv/ per capire in che ambiente si muove l'agente
+guarda l'esempio csv e poi sostituisci lo 0 con la reward che credi essere quella giusta il tuo compito è generare una reward densa.
+
+agent_x,agent_y,agent_dir,goal_pos,goal_name,action,reward
+1,3,2,"(2, 3)",no_key,DONE,0.0
+1,2,2,"(4, 4)",door_open,TOGGLE,0.0
+1,3,0,"(1, 1)",no_key,FORWARD,0.0
+2,1,3,"(1, 3)",no_key,DONE,0.0
+1,1,0,"(1, 4)",no_key,FORWARD,0.0
+1,4,3,"(1, 2)",no_key,DONE,0.0
+1,3,2,"(1, 2)",no_key,FORWARD,0.0
+1,3,2,"(1, 2)",no_key,DROP,0.0
+1,4,3,"(2, 4)",no_key,FORWARD,0.0
+1,2,3,"(2, 1)",has_key,DONE,0.0
+1,2,2,"(1, 4)",no_key,RIGHT,0.0
+1,3,2,"(3, 2)",has_key,RIGHT,0.0
+1,1,3,"(1, 4)",no_key,LEFT,0.0
+1,1,0,"(3, 1)",has_key,FORWARD,0.0
+
+dammi solo testo non usare nessun tool
+dammi in output solo le righe del csv con la reward sostituita NON AGGIUNGERE ALTRO TESTO, presta attenzione a come sono codificate le varie informazioni per esempio la direzione dell agente dall ambiente, cambia solo le righe scritte nel prompt (15 righe) si brutale se serve 
+mi raccomando conta una rewad di -0.0001 se l'agente perde tempo tipo girare su se stesso.

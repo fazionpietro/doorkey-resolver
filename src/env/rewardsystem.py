@@ -42,7 +42,7 @@ class RewardConfig:
     goal_bonus: float = 1.0
     regression_penalty: float = -0.7
     time_penalty: float = -0.001
-    shaping_scale: float = 0.5
+    shaping_scale: float = 0.6
     gamma: float = 0.99
 
 
